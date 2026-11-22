@@ -5,10 +5,8 @@
     <title>MyChatApp</title>
     <meta name="color-scheme" content="light" />
     <!-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP -->
-    <meta
-      http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:"
-    />
+    <!-- 占位符由 electron.vite.config.ts 按环境与实际 API 地址生成，避免写死来源 -->
+    <meta http-equiv="Content-Security-Policy" content="__MYCHATAPP_CSP__" />
   </head>
 
   <body>

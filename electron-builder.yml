@@ -9,15 +9,27 @@ files:
   - '!{.eslintcache,eslint.config.mjs,.prettierignore,.prettierrc.yaml,dev-app-update.yml,CHANGELOG.md,README.md}'
   - '!{.env,.env.*,.npmrc,pnpm-lock.yaml}'
   - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
+  - '!server/**'
+  - '!database/**'
+  - '!**/.env*'
+  - '!HANDOFF.md'
+  - '!**/.tmp-*/**'
+  - '!.tmp-*'
 asarUnpack:
   - resources/**
 win:
   executableName: mychatapp
 nsis:
   artifactName: ${name}-${version}-setup.${ext}
+  # 关闭一键安装，改为安装向导，允许用户选择安装目录
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  # 保持 per-user 安装（无需管理员权限，装到用户目录）
+  perMachine: false
   shortcutName: ${productName}
   uninstallDisplayName: ${productName}
   createDesktopShortcut: always
+  createStartMenuShortcut: true
 mac:
   entitlementsInherit: build/entitlements.mac.plist
   extendInfo:
