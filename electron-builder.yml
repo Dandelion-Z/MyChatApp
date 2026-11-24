@@ -13,6 +13,8 @@ files:
   - '!database/**'
   - '!**/.env*'
   - '!HANDOFF.md'
+  - '!scripts/**'
+  - '!docs/**'
   - '!**/.tmp-*/**'
   - '!.tmp-*'
 asarUnpack:
@@ -26,6 +28,8 @@ nsis:
   allowToChangeInstallationDirectory: true
   # 保持 per-user 安装（无需管理员权限，装到用户目录）
   perMachine: false
+  # 差分更新：app.asar 以未压缩形式存入安装包，块级差分只下载实际变化的字节
+  differentialPackage: store-asar
   shortcutName: ${productName}
   uninstallDisplayName: ${productName}
   createDesktopShortcut: always
@@ -52,4 +56,6 @@ appImage:
 npmRebuild: false
 publish:
   provider: generic
-  url: https://example.com/auto-updates
+  # 占位地址（.invalid 为保留 TLD，不会解析成功），发布前必须改成真实更新服务器；
+  # 运行期可用环境变量 MYCHATAPP_UPDATE_URL 覆盖，具体见报告与 .env.example
+  url: https://updates.invalid/mychatapp

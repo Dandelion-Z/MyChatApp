@@ -98,18 +98,14 @@ export function registerMessageHandler(
 
     const { toUserId, messageId, content } = validation.value
 
-    if (toUserId === senderId) {
-      respond({ ok: false, code: 'INVALID_RECEIVER', message: '不能给自己发送消息' })
-      return
-    }
-
     try {
       const result = await sendMessage(senderId, toUserId, messageId, content)
 
       respond({ ok: true, message: result.message })
 
-      // 只有首次成功写入才推送；重复请求只返回 ACK
-      if (result.created) {
+      // 只有首次成功写入才推送；重复请求只返回 ACK。
+      // 自我消息就是本人发给自己的备忘录，ACK 已经足够，不再向同一连接推送，避免重复展示。
+      if (result.created && toUserId !== senderId) {
         try {
           const recipientSocket = resolveRecipientSocket(toUserId)
 

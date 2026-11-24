@@ -14,6 +14,19 @@
   --accent-strong: #2a63d4;
   --accent-soft: #e8f0ff;
   --shadow: 0 1px 2px rgba(16, 24, 40, 0.04);
+
+  /* ===== 主界面三栏外壳（登录页/更新门禁仍沿用上面的旧变量） ===== */
+  --ui-nav: #f2f2f7;
+  --ui-panel: #ffffff;
+  --ui-canvas: #f5f5f7;
+  --ui-avatar: #ececf0;
+  --ui-text: #1d1d1f;
+  --ui-text-2: #86868b;
+  --ui-divider: #e5e5ea;
+  --ui-accent: #007aff;
+  --ui-selected: #e8f1ff;
+  --ui-online: #34c759;
+  --ui-danger: #ff3b30;
 }
 
 html,
@@ -34,115 +47,461 @@ input {
   font: inherit;
 }
 
-/* ===== 整体布局：左栏 + 右栏 ===== */
+/* ===== 通用角标 Badge（数字 / 红点），定位由使用方通过 className 控制 ===== */
+.badge-anchor {
+  position: relative;
+  display: inline-flex;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: var(--ui-danger);
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: 0;
+  white-space: nowrap;
+}
+
+/* 叠加在图标右上角：仅提供一种常用位置，其他位置可自行覆盖 */
+.badge-overlay {
+  position: absolute;
+  top: -6px;
+  right: -8px;
+  z-index: 1;
+}
+
+/* 红点模式：不显示数字，宽度自动收为圆点 */
+.badge-dot {
+  min-width: 8px;
+  width: 8px;
+  height: 8px;
+  padding: 0;
+  border-radius: 50%;
+}
+
+/* ===== 自绘标题栏（系统标题栏已隐藏，右上角按钮由 titleBarOverlay 绘制） ===== */
+.window {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--ui-nav);
+}
+
+.window-titlebar {
+  height: 40px;
+  flex-shrink: 0;
+  background: var(--ui-nav);
+  -webkit-app-region: drag;
+}
+
+.window-body {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* ===== 主界面三栏外壳 ===== */
 .app {
   display: flex;
   height: 100%;
+  background: var(--ui-canvas);
+  color: var(--ui-text);
 }
 
-/* ===== 左侧：好友列表 ===== */
-.sidebar {
+/* ===== 左：导航栏 64px ===== */
+.rail {
   display: flex;
   flex-direction: column;
-  width: 288px;
-  flex-shrink: 0;
-  background: var(--panel);
-  border-right: 1px solid var(--border);
-}
-
-.sidebar-header {
-  padding: 20px 20px 14px;
-}
-
-.brand {
-  font-size: 20px;
-  font-weight: 700;
-  letter-spacing: -0.2px;
-}
-
-.brand-subtitle {
-  margin-top: 4px;
-  font-size: 12px;
-  color: var(--text-3);
-}
-
-.connection-status {
-  display: inline-flex;
   align-items: center;
-  gap: 6px;
-  margin-top: 6px;
-  padding: 3px 8px;
-  border-radius: 999px;
-  font-size: 12px;
-  line-height: 1.4;
-  background: #eef1f5;
-  color: var(--text-2);
+  width: 64px;
+  flex-shrink: 0;
+  padding: 16px 0 12px;
+  background: var(--ui-nav);
 }
 
-.connection-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: currentColor;
-}
-
-.connection-status.online {
-  background: #e8f7ee;
-  color: #1e7b4f;
-}
-
-.connection-status.pending {
-  background: #fdf3e3;
-  color: #9a6b16;
-}
-
-.connection-status.pending .connection-dot {
-  animation: connection-pulse 1s ease-in-out infinite;
-}
-
-.connection-status.offline {
-  background: #fdecec;
-  color: #c0392b;
-}
-
-@keyframes connection-pulse {
-  0%,
-  100% {
-    opacity: 1;
-  }
-
-  50% {
-    opacity: 0.25;
-  }
-}
-
-.friend-list {
-  flex: 1;
-  overflow-y: auto;
-  padding: 4px 10px 12px;
-}
-
-.friend-item {
+/* 顶部账户头像：40px 占位头像，右下角叠加连接状态圆点 */
+.rail-profile {
+  position: relative;
   display: flex;
   align-items: center;
-  gap: 10px;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  margin-bottom: 24px;
+}
+
+.rail-avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--ui-avatar);
+  color: #b0b0b8;
+}
+
+.rail-presence {
+  position: absolute;
+  right: 1px;
+  bottom: 1px;
+  width: 10px;
+  height: 10px;
+  border: 2px solid var(--ui-nav);
+  border-radius: 50%;
+  background: #c7c7cc;
+}
+
+.rail-presence.online {
+  background: var(--ui-online);
+}
+
+.rail-presence.pending {
+  background: #ff9f0a;
+}
+
+.rail-presence.offline {
+  background: var(--ui-danger);
+}
+
+.rail-nav {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+
+/* 入口只显示图标，点击区 44×44，提示文字挂在 title/aria-label 上 */
+.rail-item {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--ui-text-2);
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    color 0.15s;
+}
+
+.rail-item:hover {
+  background: rgba(0, 0, 0, 0.04);
+}
+
+.rail-item.active {
+  background: var(--ui-selected);
+  color: var(--ui-accent);
+}
+
+.rail-item svg {
+  width: 24px;
+  height: 24px;
+}
+
+/* 底部账户菜单：按钮在栏内，弹出菜单贴在其右侧展示以免超出 64px 栏宽 */
+.rail-footer {
+  position: relative;
+  margin-top: auto;
+}
+
+.rail-menu {
+  position: absolute;
+  left: 52px;
+  bottom: 0;
+  z-index: 20;
+  display: flex;
+  min-width: 128px;
+  flex-direction: column;
+  padding: 6px;
+  border: 1px solid var(--ui-divider);
+  border-radius: 12px;
+  background: var(--ui-panel);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+}
+
+.rail-menu-item {
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ui-text);
+  font-size: 13px;
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.rail-menu-item:hover {
+  background: var(--ui-nav);
+}
+
+/* ===== 中：联系人栏 280px ===== */
+.contacts {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: 280px;
+  flex-shrink: 0;
+  background: var(--ui-panel);
+  border-right: 1px solid var(--ui-divider);
+}
+
+/* 右侧整条边框可拖动，用于调整中栏宽度 */
+.contacts-resize-handle {
+  position: absolute;
+  top: 0;
+  right: -3px;
+  bottom: 0;
+  z-index: 5;
+  width: 7px;
+  cursor: ew-resize;
+  touch-action: none;
+}
+
+.contacts-resize-handle:hover {
+  background: var(--ui-divider);
+}
+
+/* 固定顶部：搜索框 + 添加好友，视图切换时位置与尺寸保持不变 */
+.contacts-top {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.contacts-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px 8px;
+}
+
+.contacts-search {
+  flex: 1;
+  min-width: 0;
+  height: 32px;
+  padding: 0 10px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: var(--ui-nav);
+  color: var(--ui-text);
+  font-size: 13px;
+  outline: none;
+  transition:
+    background 0.15s,
+    border-color 0.15s,
+    box-shadow 0.15s;
+}
+
+.contacts-search::placeholder {
+  color: var(--ui-text-2);
+}
+
+.contacts-search:focus {
+  border-color: var(--ui-accent);
+  background: var(--ui-panel);
+  box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.12);
+}
+
+.contacts-add {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: 10px;
+  background: var(--ui-nav);
+  color: var(--ui-accent);
+  font-size: 17px;
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.contacts-add:hover {
+  background: var(--ui-selected);
+}
+
+/* 搜索/添加好友下拉，覆盖在列表之上，不改变主体布局 */
+.contacts-dropdown {
+  position: absolute;
+  top: 100%;
+  right: 8px;
+  left: 8px;
+  z-index: 10;
+  max-height: 320px;
+  overflow-y: auto;
+  padding: 6px;
+  border-radius: 12px;
+  background: var(--ui-panel);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1);
+}
+
+.search-result {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.search-result:hover {
+  background: var(--ui-nav);
+}
+
+.search-result-name {
+  overflow: hidden;
+  color: var(--ui-text);
+  font-size: 13px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.search-empty {
+  padding: 12px 8px;
+  color: var(--ui-text-2);
+  font-size: 12px;
+  text-align: center;
+}
+
+.avatar-sm {
+  width: 32px;
+  height: 32px;
+}
+
+.contacts-tools {
+  padding: 0 16px;
+}
+
+.chat-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px 8px 8px;
+}
+
+/* ===== 消息列表 ===== */
+.chat-entry {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   width: 100%;
   margin-bottom: 2px;
-  padding: 10px;
+  padding: 8px;
   border: 0;
   border-radius: 12px;
   background: transparent;
   color: inherit;
   text-align: left;
   cursor: pointer;
+  transition: background 0.15s;
+}
+
+.chat-entry:hover {
+  background: var(--ui-nav);
+}
+
+.chat-entry.active {
+  background: var(--ui-selected);
+}
+
+.chat-entry-body {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  flex: 1;
+}
+
+.chat-entry-top {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.chat-entry-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ui-text);
+  font-size: 14px;
+  font-weight: 500;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.chat-entry-time {
+  flex-shrink: 0;
+  color: var(--ui-text-2);
+  font-size: 11px;
+}
+
+/* 消息列表行内的置顶 / 免打扰状态标记 */
+.chat-flag {
+  flex-shrink: 0;
+  padding: 0 5px;
+  border-radius: 6px;
+  background: var(--ui-nav);
+  color: var(--ui-text-2);
+  font-size: 10px;
+  line-height: 16px;
+}
+
+.chat-entry.pinned .chat-entry-name {
+  font-weight: 600;
+}
+
+.chat-entry-preview {
+  overflow: hidden;
+  color: var(--ui-text-2);
+  font-size: 12px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.friend-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  margin-bottom: 2px;
+  padding: 8px;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s;
 }
 
 .friend-item:hover {
-  background: #f4f6fa;
+  background: var(--ui-nav);
 }
 
-.friend-item.active {
-  background: var(--accent-soft);
+.friend-item.selected {
+  background: var(--ui-selected);
 }
 
 .avatar {
@@ -150,13 +509,12 @@ input {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 42px;
-  height: 42px;
+  width: 40px;
+  height: 40px;
   flex-shrink: 0;
   border-radius: 50%;
-  color: #fff;
-  font-size: 16px;
-  font-weight: 600;
+  background: var(--ui-avatar);
+  color: #b0b0b8;
 }
 
 .online-dot {
@@ -166,9 +524,9 @@ input {
   box-sizing: content-box;
   width: 10px;
   height: 10px;
-  border: 2px solid var(--panel);
+  border: 2px solid var(--ui-panel);
   border-radius: 50%;
-  background: #22c55e;
+  background: var(--ui-online);
 }
 
 .friend-info {
@@ -179,49 +537,150 @@ input {
 }
 
 .friend-name {
+  color: var(--ui-text);
   font-size: 14px;
-  font-weight: 600;
+  font-weight: 500;
 }
 
 .friend-preview {
   overflow: hidden;
+  color: var(--ui-text-2);
   font-size: 12px;
-  color: var(--text-2);
   white-space: nowrap;
   text-overflow: ellipsis;
 }
 
-/* ===== 右侧：聊天区域 ===== */
+/* ===== 通讯录（字母分组） ===== */
+.contact-pane {
+  position: relative;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/* “新的朋友”固定入口：始终在星标和普通联系人分组之前 */
+.new-friends-entry {
+  width: auto;
+  flex-shrink: 0;
+  margin: 4px 24px 2px 8px;
+}
+
+.new-friends-avatar {
+  background: #f5a623;
+  color: #ffffff;
+}
+
+.new-friends-avatar svg {
+  width: 22px;
+  height: 22px;
+}
+
+/* 红点叠在入口头像右上角，用面板色描边，避免与橙色底混在一起 */
+.new-friends-avatar .badge-overlay {
+  top: -1px;
+  right: -1px;
+  border-radius: 50%;
+  box-shadow: 0 0 0 2px var(--ui-panel);
+}
+
+.contact-scroll {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px 24px 8px 8px;
+}
+
+.contact-group-title {
+  padding: 8px 8px 4px;
+  color: var(--ui-text-2);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+/* 右侧字母索引：仅展示实际存在的分组 */
+.letter-index {
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  padding: 4px 2px;
+  border-radius: 10px;
+  background: rgba(242, 242, 247, 0.9);
+  transform: translateY(-50%);
+}
+
+.letter-index-item {
+  width: 16px;
+  padding: 1px 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--ui-text-2);
+  font-size: 10px;
+  line-height: 14px;
+  cursor: pointer;
+}
+
+.letter-index-item:hover {
+  background: var(--ui-selected);
+  color: var(--ui-accent);
+}
+
+/* ===== 中栏底部：当前账户已迁移到左侧导航栏菜单 ===== */
+
+/* ===== 右：聊天区域 ===== */
 .chat {
   display: flex;
   flex: 1;
   flex-direction: column;
   min-width: 0;
+  background: var(--ui-canvas);
 }
 
 .chat-header {
   display: flex;
   align-items: center;
   gap: 10px;
-  height: 68px;
+  height: 64px;
   padding: 0 20px;
-  background: var(--panel);
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--ui-divider);
+}
+
+/* 顶部只显示昵称与在线绿点，不再显示头像和离线文字 */
+.chat-header .chat-name {
+  font-size: 16px;
+}
+
+.chat-online-dot {
+  width: 8px;
+  height: 8px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--ui-online);
 }
 
 .chat-title {
   display: flex;
   flex-direction: column;
+  gap: 2px;
+  min-width: 0;
 }
 
 .chat-name {
+  color: var(--ui-text);
   font-size: 15px;
   font-weight: 600;
 }
 
-.chat-status {
+.chat-presence {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--ui-text-2);
   font-size: 12px;
-  color: #22a06b;
 }
 
 /* ===== 消息列表 ===== */
@@ -230,15 +689,26 @@ input {
   flex: 1;
   flex-direction: column;
   gap: 12px;
+  min-height: 0;
   overflow-y: auto;
-  padding: 22px 22px 12px;
+  padding: 20px 24px 16px;
   /* 翻页状态浮层相对消息区域定位，不占布局高度，避免插入时视口跳动 */
   position: relative;
 }
 
+/* 微信式时间标签：独立成行、居中，不属于任何一条消息 */
+.time-divider {
+  align-self: center;
+  padding: 2px 0;
+  color: var(--ui-text-2);
+  font-size: 12px;
+  line-height: 1.4;
+  text-align: center;
+}
+
 .message-row {
   display: flex;
-  align-items: flex-end;
+  align-items: flex-start;
   gap: 8px;
 }
 
@@ -246,26 +716,27 @@ input {
   justify-content: flex-end;
 }
 
-.bubble-avatar {
+/* 收发双方统一 32px 圆形占位头像 */
+.message-avatar {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 30px;
-  height: 30px;
+  width: 32px;
+  height: 32px;
   flex-shrink: 0;
   border-radius: 50%;
-  color: #fff;
-  font-size: 12px;
-  font-weight: 600;
+  background: var(--ui-avatar);
+  color: var(--ui-text-2);
 }
 
 .bubble {
-  max-width: 60%;
-  padding: 10px 12px;
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  background: var(--panel);
-  box-shadow: var(--shadow);
+  max-width: 65%;
+  padding: 10px 14px;
+  border: 1px solid transparent;
+  border-radius: 16px;
+  background: var(--ui-panel);
+  color: var(--ui-text);
+  box-shadow: none;
 }
 
 .bubble-text {
@@ -275,60 +746,90 @@ input {
   word-break: break-word;
 }
 
-.bubble-time {
+.bubble-status {
   display: block;
   margin-top: 4px;
   font-size: 11px;
-  color: var(--text-3);
+  color: rgba(255, 255, 255, 0.8);
   text-align: right;
 }
 
 .message-row.mine .bubble {
   border-color: transparent;
-  background: var(--accent);
+  background: var(--ui-accent);
 }
 
 .message-row.mine .bubble-text {
   color: #fff;
 }
 
-.message-row.mine .bubble-time {
-  color: rgba(255, 255, 255, 0.75);
-}
-
 /* ===== 底部输入区 ===== */
 .composer {
+  position: relative;
   display: flex;
+  align-items: flex-end;
   gap: 10px;
-  padding: 12px 20px 18px;
-  background: var(--panel);
-  border-top: 1px solid var(--border);
+  padding: 10px 20px 14px;
+  background: var(--ui-panel);
+  border-top: 1px solid var(--ui-divider);
 }
 
+/* 顶部中间的拖动标识：手动调整输入区高度，低调不抢视觉 */
+.composer-resize-handle {
+  position: absolute;
+  top: -6px;
+  left: 0;
+  right: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 12px;
+  cursor: ns-resize;
+  touch-action: none;
+}
+
+.composer-resize-bar {
+  width: 32px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--ui-divider);
+  transition: background 0.15s;
+}
+
+.composer-resize-handle:hover .composer-resize-bar {
+  background: var(--ui-text-2);
+}
+
+/* 高度由用户拖动决定：初始 44px，最高聊天区的一半，文字超出后内部滚动 */
 .composer-input {
   flex: 1;
   min-width: 0;
   height: 44px;
-  padding: 0 16px;
-  border: 1px solid var(--border);
+  min-height: 44px;
+  padding: 11px 18px;
+  border: 1px solid transparent;
   border-radius: 22px;
-  background: #fafbfc;
-  color: var(--text-1);
+  background: var(--ui-nav);
+  color: var(--ui-text);
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 20px;
   outline: none;
+  resize: none;
+  overflow-y: auto;
   transition:
     border-color 0.15s,
-    box-shadow 0.15s,
-    background 0.15s;
+    box-shadow 0.15s;
 }
 
 .composer-input:focus {
-  border-color: var(--accent);
-  background: #fff;
-  box-shadow: 0 0 0 3px var(--accent-soft);
+  border-color: var(--ui-accent);
+  box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.12);
 }
 
 .composer-input::placeholder {
-  color: var(--text-3);
+  color: var(--ui-text-2);
 }
 
 .send-button {
@@ -336,7 +837,7 @@ input {
   padding: 0 22px;
   border: 0;
   border-radius: 22px;
-  background: var(--accent);
+  background: var(--ui-accent);
   color: #fff;
   font-size: 14px;
   font-weight: 600;
@@ -345,7 +846,7 @@ input {
 }
 
 .send-button:hover:not(:disabled) {
-  background: var(--accent-strong);
+  background: #0071e3;
 }
 
 .send-button:disabled {
@@ -354,33 +855,33 @@ input {
 }
 
 /* ===== 滚动条 ===== */
-.friend-list::-webkit-scrollbar,
+.chat-list::-webkit-scrollbar,
+.contact-scroll::-webkit-scrollbar,
 .messages::-webkit-scrollbar {
   width: 8px;
 }
 
-.friend-list::-webkit-scrollbar-track,
+.chat-list::-webkit-scrollbar-track,
+.contact-scroll::-webkit-scrollbar-track,
 .messages::-webkit-scrollbar-track {
   background: transparent;
 }
 
-.friend-list::-webkit-scrollbar-thumb,
+.chat-list::-webkit-scrollbar-thumb,
+.contact-scroll::-webkit-scrollbar-thumb,
 .messages::-webkit-scrollbar-thumb {
   border-radius: 4px;
   background: rgba(15, 23, 42, 0.15);
 }
 
-.friend-list::-webkit-scrollbar-thumb:hover,
+.chat-list::-webkit-scrollbar-thumb:hover,
+.contact-scroll::-webkit-scrollbar-thumb:hover,
 .messages::-webkit-scrollbar-thumb:hover {
   background: rgba(15, 23, 42, 0.25);
 }
 
 /* ===== 窄窗口适配 ===== */
-@media (max-width: 760px) {
-  .sidebar {
-    width: 220px;
-  }
-
+@media (max-width: 860px) {
   .bubble {
     max-width: 72%;
   }
@@ -389,62 +890,44 @@ input {
 /* ===== 认证界面 ===== */
 .auth-page {
   display: flex;
-  align-items: center;
-  justify-content: center;
   height: 100%;
-  padding: 24px;
-  background: linear-gradient(180deg, #f8fafc 0%, var(--bg) 100%);
+  padding: 20px;
+  overflow-y: auto;
+  background: #f5f5f7;
 }
 
 .auth-card {
   width: 100%;
-  max-width: 380px;
-  padding: 32px;
-  border: 1px solid var(--border);
-  border-radius: 16px;
-  background: var(--panel);
-  box-shadow: 0 12px 32px rgba(16, 24, 40, 0.08);
+  max-width: 360px;
+  margin: auto;
+  padding: 28px 24px;
+  border-radius: 14px;
+  background: #ffffff;
 }
 
 .auth-brand {
-  font-size: 24px;
-  font-weight: 700;
-  letter-spacing: -0.3px;
-  text-align: center;
-}
-
-.auth-subtitle {
-  margin-top: 6px;
-  margin-bottom: 22px;
-  color: var(--text-2);
-  font-size: 13px;
+  margin-bottom: 24px;
+  color: #1d1d1f;
+  font-size: 26px;
+  font-weight: 600;
+  letter-spacing: 2px;
   text-align: center;
 }
 
 .auth-form {
   display: flex;
   flex-direction: column;
-  gap: 14px;
-}
-
-.auth-field {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  color: var(--text-2);
-  font-size: 13px;
-  font-weight: 600;
+  gap: 12px;
 }
 
 .auth-input {
-  height: 42px;
+  height: 44px;
   padding: 0 12px;
-  border: 1px solid var(--border);
+  border: 1px solid transparent;
   border-radius: 10px;
-  background: #fafbfc;
-  color: var(--text-1);
+  background: #f5f5f7;
+  color: #1d1d1f;
   font-size: 14px;
-  font-weight: 400;
   outline: none;
   transition:
     border-color 0.15s,
@@ -452,27 +935,35 @@ input {
     background 0.15s;
 }
 
+.auth-input::placeholder {
+  color: #86868b;
+}
+
 .auth-input:focus {
-  border-color: var(--accent);
-  background: #fff;
-  box-shadow: 0 0 0 3px var(--accent-soft);
+  border-color: #007aff;
+  background: #ffffff;
+  box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.12);
+}
+
+.auth-input:disabled {
+  color: #86868b;
 }
 
 .auth-submit {
   height: 44px;
-  margin-top: 6px;
+  margin-top: 4px;
   border: 0;
   border-radius: 10px;
-  background: var(--accent);
-  color: #fff;
-  font-size: 14px;
+  background: #007aff;
+  color: #ffffff;
+  font-size: 15px;
   font-weight: 600;
   cursor: pointer;
   transition: background 0.15s;
 }
 
 .auth-submit:hover:not(:disabled) {
-  background: var(--accent-strong);
+  background: #0071eb;
 }
 
 .auth-submit:disabled {
@@ -484,7 +975,8 @@ input {
   display: flex;
   align-items: center;
   gap: 8px;
-  color: var(--text-2);
+  margin-top: 2px;
+  color: #86868b;
   font-size: 13px;
   cursor: pointer;
   user-select: none;
@@ -493,7 +985,7 @@ input {
 .auth-checkbox input {
   width: 16px;
   height: 16px;
-  accent-color: var(--accent);
+  accent-color: #007aff;
   cursor: pointer;
 }
 
@@ -502,7 +994,7 @@ input {
 }
 
 .auth-notice {
-  padding: 10px 12px;
+  padding: 8px 10px;
   border-radius: 8px;
   background: #fdf3e3;
   color: #9a6b16;
@@ -510,27 +1002,23 @@ input {
   line-height: 1.5;
 }
 
-.auth-error,
-.auth-success {
-  padding: 10px 12px;
-  border-radius: 8px;
+.auth-error {
+  margin: 0;
+  color: #ff3b30;
   font-size: 13px;
   line-height: 1.5;
 }
 
-.auth-error {
-  background: #fdecec;
-  color: #c0392b;
-}
-
 .auth-success {
-  background: #e8f7ee;
-  color: #1e7b4f;
+  margin-bottom: 12px;
+  color: #34c759;
+  font-size: 13px;
+  line-height: 1.5;
 }
 
 .auth-switch {
-  margin-top: 18px;
-  color: var(--text-2);
+  margin-top: 4px;
+  color: #86868b;
   font-size: 13px;
   text-align: center;
 }
@@ -539,50 +1027,14 @@ input {
   padding: 0 2px;
   border: 0;
   background: none;
-  color: var(--accent);
+  color: #007aff;
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 500;
   cursor: pointer;
 }
 
 .auth-link:hover {
   text-decoration: underline;
-}
-
-/* ===== 当前用户 / 退出登录 ===== */
-.current-user {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  margin-top: 10px;
-}
-
-.current-user-name {
-  overflow: hidden;
-  color: var(--text-2);
-  font-size: 13px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.logout-button {
-  flex-shrink: 0;
-  padding: 4px 10px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: #fff;
-  color: var(--text-2);
-  font-size: 12px;
-  cursor: pointer;
-  transition:
-    border-color 0.15s,
-    color 0.15s;
-}
-
-.logout-button:hover {
-  border-color: var(--accent);
-  color: var(--accent);
 }
 
 /* ===== 启动占位 ===== */
@@ -611,17 +1063,17 @@ input {
 
 .list-retry {
   padding: 6px 14px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: #fff;
-  color: var(--accent);
+  border: 1px solid var(--ui-divider);
+  border-radius: 10px;
+  background: var(--ui-panel);
+  color: var(--ui-accent);
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
 }
 
 .list-retry:hover {
-  border-color: var(--accent);
+  border-color: var(--ui-accent);
 }
 
 .chat-empty {
@@ -630,21 +1082,21 @@ input {
   align-items: center;
   justify-content: center;
   padding: 24px;
-  color: var(--text-2);
+  color: var(--ui-text-2);
   font-size: 14px;
   text-align: center;
 }
 
 .messages-empty {
   margin: auto;
-  color: var(--text-3);
+  color: var(--ui-text-2);
   font-size: 13px;
 }
 
 /* ===== 历史消息加载状态 / 发送状态 ===== */
 .messages-state {
   margin: auto;
-  color: var(--text-2);
+  color: var(--ui-text-2);
   font-size: 13px;
   text-align: center;
 }
@@ -725,54 +1177,31 @@ input {
 }
 
 /* ===== 添加好友 ===== */
-.sidebar-tools {
-  padding: 0 16px 10px;
-}
-
-.add-friend-button {
-  width: 100%;
-  height: 36px;
-  border: 1px dashed var(--border);
-  border-radius: 10px;
-  background: #fff;
-  color: var(--accent);
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-  transition:
-    border-color 0.15s,
-    background 0.15s;
-}
-
-.add-friend-button:hover {
-  border-color: var(--accent);
-  background: var(--accent-soft);
-}
-
 .add-friend-form {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  margin-bottom: 8px;
   padding: 10px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--ui-divider);
   border-radius: 12px;
-  background: #fafbfc;
+  background: var(--ui-nav);
 }
 
 .add-friend-input {
   height: 36px;
   padding: 0 10px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: #fff;
-  color: var(--text-1);
+  border: 1px solid var(--ui-divider);
+  border-radius: 10px;
+  background: var(--ui-panel);
+  color: var(--ui-text);
   font-size: 13px;
   outline: none;
 }
 
 .add-friend-input:focus {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-soft);
+  border-color: var(--ui-accent);
+  box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.14);
 }
 
 .add-friend-actions {
@@ -784,8 +1213,8 @@ input {
   flex: 1;
   height: 34px;
   border: 0;
-  border-radius: 8px;
-  background: var(--accent);
+  border-radius: 10px;
+  background: var(--ui-accent);
   color: #fff;
   font-size: 13px;
   font-weight: 600;
@@ -800,10 +1229,10 @@ input {
 .add-friend-cancel {
   height: 34px;
   padding: 0 12px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: #fff;
-  color: var(--text-2);
+  border: 1px solid var(--ui-divider);
+  border-radius: 10px;
+  background: var(--ui-panel);
+  color: var(--ui-text-2);
   font-size: 13px;
   cursor: pointer;
 }
@@ -848,84 +1277,321 @@ input {
   margin-bottom: 0;
 }
 
-.friend-delete {
-  flex-shrink: 0;
-  width: 26px;
-  height: 26px;
-  border: 0;
-  border-radius: 50%;
-  background: transparent;
-  color: var(--text-3);
-  font-size: 16px;
-  line-height: 1;
-  cursor: pointer;
-  opacity: 0.45;
-  transition:
-    opacity 0.15s,
-    color 0.15s,
-    background 0.15s;
+/* ===== 联系人右键菜单 ===== */
+.contact-menu {
+  position: fixed;
+  z-index: 30;
+  width: 180px;
+  padding: 6px;
+  border: 1px solid var(--ui-divider);
+  border-radius: 12px;
+  background: var(--ui-panel);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.18);
 }
 
-.friend-row:hover .friend-delete,
-.friend-delete:focus-visible {
-  opacity: 1;
-}
-
-.friend-delete:hover {
-  color: #c0392b;
-  background: #fdecec;
-}
-
-.friend-confirm {
-  margin: 6px 2px 8px;
-  padding: 10px;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: #fafbfc;
-}
-
-.friend-confirm p {
-  color: var(--text-2);
-  font-size: 12px;
-  line-height: 1.5;
-}
-
-.friend-confirm-actions {
-  display: flex;
-  gap: 8px;
-  margin-top: 8px;
-}
-
-.friend-confirm-delete {
-  flex: 1;
-  height: 30px;
+.contact-menu-item {
+  display: block;
+  width: 100%;
+  padding: 8px 10px;
   border: 0;
   border-radius: 8px;
-  background: #c0392b;
-  color: #fff;
+  background: transparent;
+  color: var(--ui-text);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.contact-menu-item:hover {
+  background: var(--ui-nav);
+}
+
+.contact-menu-item.danger {
+  color: #ff3b30;
+}
+
+.contact-menu-item.danger:hover {
+  background: #ffeceb;
+}
+
+/* ===== 星标联系人 ===== */
+.friend-star {
+  margin-right: 4px;
+  color: #f5a623;
   font-size: 12px;
+}
+
+/* ===== 删除好友确认弹窗 ===== */
+.dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.24);
+}
+
+.friend-dialog {
+  width: 300px;
+  padding: 20px;
+  border-radius: 16px;
+  background: var(--ui-panel);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.24);
+}
+
+.friend-dialog-title {
+  color: var(--ui-text);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.friend-dialog-text {
+  margin-top: 8px;
+  color: var(--ui-text-2);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.friend-dialog-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.friend-dialog-cancel {
+  flex: 1;
+  height: 34px;
+  border: 1px solid var(--ui-divider);
+  border-radius: 10px;
+  background: var(--ui-panel);
+  color: var(--ui-text-2);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.friend-dialog-confirm {
+  flex: 1;
+  height: 34px;
+  border: 0;
+  border-radius: 10px;
+  background: #ff3b30;
+  color: #fff;
+  font-size: 13px;
   font-weight: 600;
   cursor: pointer;
 }
 
-.friend-confirm-delete:disabled {
+.friend-dialog-confirm:disabled,
+.friend-dialog-cancel:disabled {
   opacity: 0.55;
   cursor: not-allowed;
 }
 
-.friend-confirm-cancel {
-  height: 30px;
-  padding: 0 10px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: #fff;
-  color: var(--text-2);
-  font-size: 12px;
-  cursor: pointer;
-}
-
 .friend-delete-error {
   margin-top: 8px;
+  color: #ff3b30;
+  font-size: 12px;
+}
+
+/* ===== 启动更新门禁 ===== */
+.update-gate {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  padding: 24px;
+  background: var(--bg);
+}
+
+.update-card {
+  width: 100%;
+  max-width: 380px;
+  padding: 28px 26px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--panel);
+  box-shadow: var(--shadow);
+}
+
+.update-brand {
+  margin-bottom: 14px;
+  color: var(--text-1);
+  font-size: 20px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.update-message {
+  margin: 0 0 16px;
+  color: var(--text-2);
+  font-size: 14px;
+  line-height: 1.6;
+  text-align: center;
+  word-break: break-word;
+}
+
+.update-error {
+  color: #c0392b;
+}
+
+.update-progress {
+  height: 6px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--accent-soft);
+}
+
+.update-progress-bar {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--accent);
+  transition: width 0.2s ease;
+}
+
+.update-hint {
+  margin: 14px 0 0;
+  color: var(--text-3);
+  font-size: 12px;
+  line-height: 1.5;
+  text-align: center;
+}
+
+.update-retry {
+  width: 100%;
+}
+
+/* ===== 新的朋友：好友申请列表 ===== */
+.requests-panel {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.requests-header {
+  flex-shrink: 0;
+  background: var(--ui-panel);
+}
+
+.requests-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 20px 20px;
+}
+
+.request-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 8px;
+  border-bottom: 1px solid var(--ui-divider);
+}
+
+.request-info {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.request-name {
+  overflow: hidden;
+  color: var(--ui-text);
+  font-size: 14px;
+  font-weight: 500;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.request-meta {
+  overflow: hidden;
+  color: var(--ui-text-2);
+  font-size: 12px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.request-actions {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 8px;
+}
+
+.request-accept,
+.request-reject {
+  height: 30px;
+  padding: 0 14px;
+  border-radius: 15px;
+  font-size: 13px;
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    border-color 0.15s;
+}
+
+.request-accept {
+  border: 0;
+  background: var(--ui-accent);
+  color: #ffffff;
+  font-weight: 600;
+}
+
+.request-accept:hover:not(:disabled) {
+  background: #0071e3;
+}
+
+.request-reject {
+  border: 1px solid var(--ui-divider);
+  background: var(--ui-panel);
+  color: var(--ui-text-2);
+}
+
+.request-reject:hover:not(:disabled) {
+  border-color: var(--ui-text-2);
+}
+
+.request-accept:disabled,
+.request-reject:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.request-status {
+  color: var(--ui-text-2);
+  font-size: 13px;
+}
+
+.request-status.accepted {
+  color: var(--ui-online);
+}
+
+.request-status.expired {
+  color: var(--ui-text-2);
+  opacity: 0.7;
+}
+
+.request-action-error {
+  margin: 8px 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: #ffeceb;
   color: #c0392b;
   font-size: 12px;
+  line-height: 1.5;
+}
+
+.requests-body::-webkit-scrollbar {
+  width: 8px;
+}
+
+.requests-body::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.requests-body::-webkit-scrollbar-thumb {
+  border-radius: 4px;
+  background: rgba(15, 23, 42, 0.15);
 }

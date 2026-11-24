@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 import { register } from '../api/auth'
 import { ApiError } from '../api/client'
@@ -38,6 +38,13 @@ function AuthScreen(): React.JSX.Element {
   const [submitting, setSubmitting] = useState<boolean>(false)
   // 默认不勾选自动登录；仅影响 Refresh Token 是否持久化
   const [autoLogin, setAutoLogin] = useState<boolean>(false)
+
+  // 登录 / 注册界面各自使用贴合的窗口高度，切换时只调整尺寸并重新居中
+  useEffect(() => {
+    void window.api?.windowLayout?.set(mode).catch(() => {
+      // 窗口尺寸调整失败不影响界面与登录流程
+    })
+  }, [mode])
 
   const switchMode = (nextMode: Mode): void => {
     setMode(nextMode)
@@ -103,8 +110,7 @@ function AuthScreen(): React.JSX.Element {
   return (
     <div className="auth-page">
       <div className="auth-card">
-        <h1 className="auth-brand">MyChatApp</h1>
-        <p className="auth-subtitle">{mode === 'login' ? '登录以继续聊天' : '创建一个新账号'}</p>
+        <h1 className="auth-brand">永夜</h1>
 
         {notice && <p className="auth-notice">{notice}</p>}
 
@@ -112,31 +118,29 @@ function AuthScreen(): React.JSX.Element {
 
         {mode === 'login' ? (
           <form className="auth-form" onSubmit={handleLogin}>
-            <label className="auth-field">
-              用户名
-              <input
-                className="auth-input"
-                type="text"
-                value={username}
-                onChange={(event) => setUsername(event.target.value)}
-                autoComplete="username"
-                required
-                disabled={submitting}
-              />
-            </label>
+            <input
+              className="auth-input"
+              type="text"
+              value={username}
+              placeholder="用户名"
+              aria-label="用户名"
+              onChange={(event) => setUsername(event.target.value)}
+              autoComplete="username"
+              required
+              disabled={submitting}
+            />
 
-            <label className="auth-field">
-              密码
-              <input
-                className="auth-input"
-                type="password"
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-                autoComplete="current-password"
-                required
-                disabled={submitting}
-              />
-            </label>
+            <input
+              className="auth-input"
+              type="password"
+              value={password}
+              placeholder="密码"
+              aria-label="密码"
+              onChange={(event) => setPassword(event.target.value)}
+              autoComplete="current-password"
+              required
+              disabled={submitting}
+            />
 
             <label className="auth-checkbox">
               <input
@@ -157,47 +161,51 @@ function AuthScreen(): React.JSX.Element {
             <button className="auth-submit" type="submit" disabled={submitting}>
               {submitting ? '登录中…' : '登录'}
             </button>
+
+            <p className="auth-switch">
+              还没有账号？
+              <button className="auth-link" type="button" onClick={() => switchMode('register')}>
+                注册账号
+              </button>
+            </p>
           </form>
         ) : (
           <form className="auth-form" onSubmit={handleRegister}>
-            <label className="auth-field">
-              用户名
-              <input
-                className="auth-input"
-                type="text"
-                value={username}
-                onChange={(event) => setUsername(event.target.value)}
-                autoComplete="username"
-                required
-                disabled={submitting}
-              />
-            </label>
+            <input
+              className="auth-input"
+              type="text"
+              value={username}
+              placeholder="用户名"
+              aria-label="用户名"
+              onChange={(event) => setUsername(event.target.value)}
+              autoComplete="username"
+              required
+              disabled={submitting}
+            />
 
-            <label className="auth-field">
-              密码
-              <input
-                className="auth-input"
-                type="password"
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-                autoComplete="new-password"
-                required
-                disabled={submitting}
-              />
-            </label>
+            <input
+              className="auth-input"
+              type="password"
+              value={password}
+              placeholder="密码"
+              aria-label="密码"
+              onChange={(event) => setPassword(event.target.value)}
+              autoComplete="new-password"
+              required
+              disabled={submitting}
+            />
 
-            <label className="auth-field">
-              昵称
-              <input
-                className="auth-input"
-                type="text"
-                value={nickname}
-                onChange={(event) => setNickname(event.target.value)}
-                autoComplete="nickname"
-                required
-                disabled={submitting}
-              />
-            </label>
+            <input
+              className="auth-input"
+              type="text"
+              value={nickname}
+              placeholder="昵称"
+              aria-label="昵称"
+              onChange={(event) => setNickname(event.target.value)}
+              autoComplete="nickname"
+              required
+              disabled={submitting}
+            />
 
             {error && (
               <p className="auth-error" role="alert">
@@ -208,26 +216,15 @@ function AuthScreen(): React.JSX.Element {
             <button className="auth-submit" type="submit" disabled={submitting}>
               {submitting ? '注册中…' : '注册账号'}
             </button>
-          </form>
-        )}
 
-        <p className="auth-switch">
-          {mode === 'login' ? (
-            <>
-              还没有账号？
-              <button className="auth-link" type="button" onClick={() => switchMode('register')}>
-                注册账号
-              </button>
-            </>
-          ) : (
-            <>
+            <p className="auth-switch">
               已有账号？
               <button className="auth-link" type="button" onClick={() => switchMode('login')}>
                 返回登录
               </button>
-            </>
-          )}
-        </p>
+            </p>
+          </form>
+        )}
       </div>
     </div>
   )

@@ -5,8 +5,10 @@ import express from 'express'
 import { Server } from 'socket.io'
 import { pool } from './database/pool'
 import { authRouter } from './routes/authRoutes'
+import { conversationRouter } from './routes/conversationRoutes'
 import { friendRouter } from './routes/friendRoutes'
 import { messageRouter } from './routes/messageRoutes'
+import { deleteExpiredMessages } from './services/messageService'
 import { registerSocketHandlers } from './socket'
 
 dotenv.config()
@@ -81,7 +83,7 @@ app.set('trust proxy', false)
 app.use(
   cors({
     origin: CORS_ORIGINS,
-    methods: ['GET', 'POST', 'DELETE', 'OPTIONS'],
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization']
   })
 )
@@ -95,6 +97,7 @@ app.get('/health', (_request, response) => {
 
 app.use('/api/auth', authRouter)
 app.use('/api/friends', friendRouter)
+app.use('/api/conversations', conversationRouter)
 app.use('/api/messages', messageRouter)
 
 // Express 应用挂到 Node 原生 HTTP Server 上
@@ -120,6 +123,33 @@ const io = new Server(httpServer, {
 })
 
 registerSocketHandlers(io)
+
+// 消息保留策略：每小时清理一次超过保留期的消息；启动时先清理一次
+const RETENTION_CLEANUP_INTERVAL_MS = 60 * 60 * 1000
+let retentionTimer: NodeJS.Timeout | null = null
+
+async function runRetentionCleanup(): Promise<void> {
+  try {
+    const deleted = await deleteExpiredMessages()
+
+    if (deleted > 0) {
+      console.log(`[messages] 已清理 ${deleted} 条超过保留期的消息`)
+    }
+  } catch (error) {
+    console.error(
+      '[messages] 清理过期消息失败：',
+      error instanceof Error ? error.message : String(error)
+    )
+  }
+}
+
+function startMessageRetention(): void {
+  void runRetentionCleanup()
+
+  retentionTimer = setInterval(() => {
+    void runRetentionCleanup()
+  }, RETENTION_CLEANUP_INTERVAL_MS)
+}
 
 httpServer.on('error', (error: NodeJS.ErrnoException) => {
   console.error('HTTP 服务器错误：', error.message)
@@ -156,6 +186,8 @@ async function start(): Promise<void> {
     console.log('  Socket.IO：已绑定到同一个 HTTP Server')
     console.log(`  CORS origins：${CORS_ORIGINS.join(', ')}`)
   })
+
+  startMessageRetention()
 }
 
 void start()
@@ -170,6 +202,11 @@ async function shutdown(signal: NodeJS.Signals): Promise<void> {
 
   isShuttingDown = true
   console.log(`\n收到 ${signal}，正在关闭服务器...`)
+
+  if (retentionTimer) {
+    clearInterval(retentionTimer)
+    retentionTimer = null
+  }
 
   // 保留 5 秒兜底；不使用 unref()，确保关闭流程不会无限等待
   const timeoutId = setTimeout(() => {

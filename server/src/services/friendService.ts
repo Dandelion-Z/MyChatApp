@@ -1,4 +1,5 @@
 import { pool } from '../database/pool'
+import { lockUserPair } from './userPairLock'
 
 export type FriendUser = {
   id: string
@@ -11,6 +12,16 @@ export type FriendListItem = {
   username: string
   nickname: string
   createdAt: string
+  /** 当前用户是否把该好友标为星标；只反映自己这一侧的关系记录 */
+  isStarred: boolean
+  /** 星标标记时间；未星标时为 null */
+  starredAt: string | null
+}
+
+export type FriendStarState = {
+  friendId: string
+  isStarred: boolean
+  starredAt: string | null
 }
 
 export class UserNotFoundError extends Error {
@@ -124,7 +135,7 @@ export async function createFriendship(
 export async function getFriends(currentUserId: string): Promise<FriendListItem[]> {
   // 参数化查询：当前用户 ID 只来自 JWT；JOIN 用户表并过滤软删除用户
   const result = await pool.query(
-    `SELECT u.id, u.username, u.nickname, f.created_at
+    `SELECT u.id, u.username, u.nickname, f.created_at, f.is_starred, f.starred_at
      FROM friendships f
      JOIN users u ON u.id = f.friend_id
      WHERE f.user_id = $1 AND u.is_deleted = FALSE
@@ -137,38 +148,92 @@ export async function getFriends(currentUserId: string): Promise<FriendListItem[
     id: String(row.id),
     username: String(row.username),
     nickname: String(row.nickname),
-    createdAt: new Date(row.created_at).toISOString()
+    createdAt: new Date(row.created_at).toISOString(),
+    isStarred: row.is_starred === true,
+    starredAt: row.starred_at ? new Date(row.starred_at).toISOString() : null
   }))
 }
 
-export async function deleteFriendship(currentUserId: string, friendId: string): Promise<void> {
-  // 与添加好友保持一致：按 BIGINT 数值升序确定固定的删除顺序
-  const [firstId, secondId] =
-    BigInt(currentUserId) < BigInt(friendId) ? [currentUserId, friendId] : [friendId, currentUserId]
+export async function setFriendStarred(
+  currentUserId: string,
+  friendId: string,
+  starred: boolean
+): Promise<FriendStarState> {
+  // 只更新当前用户自己的好友关系记录；对方那一侧完全不受影响
+  const result = await pool.query(
+    `UPDATE friendships
+     SET is_starred = $3,
+         starred_at = CASE WHEN $3 THEN CURRENT_TIMESTAMP ELSE NULL END
+     WHERE user_id = $1 AND friend_id = $2
+     RETURNING is_starred, starred_at`,
+    [currentUserId, friendId, starred]
+  )
 
+  const row = result.rows[0]
+
+  if (!row) {
+    throw new FriendshipNotFoundError()
+  }
+
+  return {
+    friendId,
+    isStarred: row.is_starred === true,
+    starredAt: row.starred_at ? new Date(row.starred_at).toISOString() : null
+  }
+}
+
+/**
+ * 删除好友（连同双方云端聊天数据）。
+ *
+ * 永夜的产品规则：删除好友后，双方都不能再查看此前的聊天历史。
+ * 因此必须在同一个事务内完成：
+ * 1. 删除双向 friendships（星标字段随行删除）；
+ * 2. 删除双方之间两个方向的全部 messages；
+ * 3. 删除双方各自的 user_conversations 记录；
+ * 4. 保留 friend_requests 等申请历史，不影响与其他人的会话。
+ *
+ * 与消息发送共用同一把用户对级锁：发送先取得锁时，删除会等其提交后再清理该消息；
+ * 删除先取得锁时，等待中的发送会在好友校验阶段失败。
+ */
+export async function deleteFriendship(currentUserId: string, friendId: string): Promise<void> {
   const client = await pool.connect()
   let deletedCount: number
 
   try {
     await client.query('BEGIN')
 
+    await lockUserPair(client, currentUserId, friendId)
+
     const first = await client.query(
       'DELETE FROM friendships WHERE user_id = $1 AND friend_id = $2',
-      [firstId, secondId]
+      [currentUserId, friendId]
     )
 
     const second = await client.query(
       'DELETE FROM friendships WHERE user_id = $1 AND friend_id = $2',
-      [secondId, firstId]
+      [friendId, currentUserId]
     )
 
     deletedCount = (first.rowCount ?? 0) + (second.rowCount ?? 0)
 
     if (deletedCount === 0) {
-      // 两个方向都不存在，回滚并报告 404
+      // 两个方向都不存在，回滚并报告 404（不清理任何消息）
       await client.query('ROLLBACK')
     } else {
-      // 即使原本只剩一个方向，另一个方向的 DELETE 也已执行，两条都会被清理
+      await client.query(
+        `DELETE FROM messages
+         WHERE (sender_id = $1 AND receiver_id = $2)
+            OR (sender_id = $2 AND receiver_id = $1)`,
+        [currentUserId, friendId]
+      )
+
+      await client.query(
+        `DELETE FROM user_conversations
+         WHERE (user_id = $1 AND peer_id = $2)
+            OR (user_id = $2 AND peer_id = $1)`,
+        [currentUserId, friendId]
+      )
+
       await client.query('COMMIT')
     }
   } catch (error) {

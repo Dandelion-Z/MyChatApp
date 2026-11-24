@@ -2,7 +2,8 @@ import type { Request, Response } from 'express'
 import {
   InvalidMessageCursorError,
   MessageUserNotFoundError,
-  getMessageHistory
+  getMessageHistory,
+  getMessagesAfter
 } from '../services/messageService'
 
 const FRIEND_ID_PATTERN = /^[1-9]\d*$/
@@ -50,10 +51,7 @@ export async function listMessages(request: Request, response: Response): Promis
     return
   }
 
-  if (friendId === currentUserId) {
-    response.status(400).json({ success: false, error: '不能查询与自己的消息' })
-    return
-  }
+  // 允许 friendId === 当前用户：自我聊天（个人备忘录）历史，仍由 JWT 身份决定查询主体
 
   const limit = parseLimit(request.query.limit)
 
@@ -74,8 +72,47 @@ export async function listMessages(request: Request, response: Response): Promis
     before = rawBefore
   }
 
+  // 增量同步游标：与 before 互斥，after 表示只返回该游标之后（更新）的消息
+  const rawAfter = request.query.after
+  let after: string | undefined
+
+  if (rawAfter !== undefined) {
+    if (typeof rawAfter !== 'string' || rawAfter.length === 0 || rawAfter.length > 512) {
+      response.status(400).json({ success: false, error: '同步游标无效' })
+      return
+    }
+
+    after = rawAfter
+  }
+
+  if (before !== undefined && after !== undefined) {
+    response.status(400).json({ success: false, error: 'before 与 after 不能同时使用' })
+    return
+  }
+
+  // 增量同步可以从保留期最早一条开始（不带 after），此时用 order=asc 明确方向
+  const rawOrder = request.query.order
+  let forward = after !== undefined
+
+  if (rawOrder !== undefined) {
+    if (rawOrder !== 'asc') {
+      response.status(400).json({ success: false, error: 'order 只支持 asc' })
+      return
+    }
+
+    forward = true
+  }
+
+  if (forward && before !== undefined) {
+    response.status(400).json({ success: false, error: 'before 与 order=asc 不能同时使用' })
+    return
+  }
+
   try {
-    const history = await getMessageHistory(currentUserId, friendId, limit, before)
+    const history = forward
+      ? await getMessagesAfter(currentUserId, friendId, limit, after)
+      : await getMessageHistory(currentUserId, friendId, limit, before)
+
     response.status(200).json({ success: true, data: history })
   } catch (error) {
     if (error instanceof MessageUserNotFoundError) {

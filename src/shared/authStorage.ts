@@ -35,4 +35,8 @@ export type AuthStorageApi = {
 
 export type RendererApi = {
   authStorage: AuthStorageApi
+  updater: import('./updater').UpdaterApi
+  localMessages: import('./localMessages').LocalMessagesApi
+  windowLayout: import('./windowLayout').WindowLayoutApi
+  windowFlash: import('./windowFlash').WindowFlashApi
 }

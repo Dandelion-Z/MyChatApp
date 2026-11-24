@@ -1,4 +1,6 @@
+import type { PoolClient } from 'pg'
 import { pool } from '../database/pool'
+import { lockUserPair } from './userPairLock'
 
 const ID_PATTERN = /^[1-9]\d*$/
 const MAX_BIGINT = 9223372036854775807n
@@ -14,6 +16,37 @@ const CURSOR_ENCODED_PATTERN = /^[A-Za-z0-9_-]{1,512}$/
  * 因此消息 DTO 也返回同样的微秒文本，客户端按它排序才能与数据库一致。
  */
 const CREATED_AT_PRECISE_SQL = `to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')`
+
+/**
+ * 服务端消息保留天数。
+ *
+ * 服务端只保留最近 N 天的消息，更早的消息由清理任务删除；查询同样按该边界过滤，
+ * 保证客户端在两次清理之间也不会拿到超出保留期的消息。
+ * 默认 30 天，允许通过环境变量覆盖（测试用）。
+ */
+const DEFAULT_RETENTION_DAYS = 30
+const RETENTION_ENV = 'MESSAGE_RETENTION_DAYS'
+
+function retentionDays(): number {
+  const raw = process.env[RETENTION_ENV]?.trim()
+
+  if (!raw) {
+    return DEFAULT_RETENTION_DAYS
+  }
+
+  const days = Number(raw)
+
+  if (!Number.isInteger(days) || days < 1) {
+    return DEFAULT_RETENTION_DAYS
+  }
+
+  return days
+}
+
+/** 保留期起点；早于该时间的消息视为过期 */
+function retentionCutoff(): Date {
+  return new Date(Date.now() - retentionDays() * 24 * 60 * 60 * 1000)
+}
 
 export type MessageItem = {
   id: string
@@ -174,6 +207,41 @@ function validateExistingMessage(
 }
 
 /**
+ * 新消息写入后维护双方会话记录（自我聊天只维护一条）。
+ *
+ * 只更新消息活动字段与隐藏位，不改置顶、免打扰、已读位置和 version；
+ * 与消息插入处于同一事务，保证原子性。
+ */
+async function maintainConversations(client: PoolClient, message: MessageRow): Promise<void> {
+  const senderId = String(message.sender_id)
+  const receiverId = String(message.receiver_id)
+  const peers: Array<[string, string]> =
+    senderId === receiverId
+      ? [[senderId, receiverId]]
+      : [
+          [senderId, receiverId],
+          [receiverId, senderId]
+        ]
+
+  for (const [userId, peerId] of peers) {
+    await client.query(
+      `INSERT INTO user_conversations (
+         user_id, peer_id, last_message_at, last_message_id, last_activity_at,
+         is_hidden, created_at, updated_at
+       )
+       VALUES ($1, $2, $3, $4, $3, FALSE, clock_timestamp(), clock_timestamp())
+       ON CONFLICT (user_id, peer_id) DO UPDATE
+       SET last_message_at = EXCLUDED.last_message_at,
+           last_message_id = EXCLUDED.last_message_id,
+           last_activity_at = EXCLUDED.last_activity_at,
+           is_hidden = FALSE,
+           updated_at = clock_timestamp()`,
+      [userId, peerId, message.created_at, message.id]
+    )
+  }
+}
+
+/**
  * 发送消息（幂等）。
  *
  * 顺序原则：
@@ -213,36 +281,45 @@ export async function sendMessage(
       await client.query('BEGIN')
       transactionOpen = true
 
-      // 双向关系必须都存在；FOR SHARE 阻止删除好友事务在发送完成前提交
-      const friendship = await client.query<{ user_id: string }>(
-        `SELECT user_id
-         FROM friendships
-         WHERE (user_id = $1 AND friend_id = $2)
-            OR (user_id = $2 AND friend_id = $1)
-         FOR SHARE`,
-        [senderId, receiverId]
-      )
+      // 同一对用户串行化：保证在锁内取数据库时钟、按 (created_at, id) 有序落库，
+      // 并与删除好友互斥，删除完成后不会再有新消息写入
+      await lockUserPair(client, senderId, receiverId)
 
-      if ((friendship.rowCount ?? 0) < 2) {
-        await client.query('ROLLBACK')
-        transactionOpen = false
+      // 自我消息（接收方就是发送者）是个人备忘录，不需要好友关系；
+      // 其余情况双向关系必须都存在；FOR SHARE 阻止删除好友事务在发送完成前提交
+      if (senderId !== receiverId) {
+        const friendship = await client.query<{ user_id: string }>(
+          `SELECT user_id
+           FROM friendships
+           WHERE (user_id = $1 AND friend_id = $2)
+              OR (user_id = $2 AND friend_id = $1)
+           FOR SHARE`,
+          [senderId, receiverId]
+        )
 
-        // 并发情况下同一 messageId 可能刚被成功写入，此时重试语义优先
-        const raced = await findMessageByMessageId(messageId)
+        if ((friendship.rowCount ?? 0) < 2) {
+          await client.query('ROLLBACK')
+          transactionOpen = false
 
-        if (raced) {
-          return {
-            message: validateExistingMessage(raced, senderId, receiverId, content),
-            created: false
+          // 并发情况下同一 messageId 可能刚被成功写入，此时重试语义优先
+          const raced = await findMessageByMessageId(messageId)
+
+          if (raced) {
+            return {
+              message: validateExistingMessage(raced, senderId, receiverId, content),
+              created: false
+            }
           }
-        }
 
-        throw new MessageNotFriendError()
+          throw new MessageNotFriendError()
+        }
       }
 
       const inserted = await client.query<MessageRow>(
-        `INSERT INTO messages (message_id, sender_id, receiver_id, content)
-         VALUES ($1, $2, $3, $4)
+        // 显式使用 clock_timestamp()：CURRENT_TIMESTAMP 是事务开始时间，
+        // 并发发送时会早于实际取得锁的顺序，导致 (created_at, id) 排序错乱
+        `INSERT INTO messages (message_id, sender_id, receiver_id, content, created_at)
+         VALUES ($1, $2, $3, $4, clock_timestamp())
          ON CONFLICT (message_id) DO NOTHING
          RETURNING id, message_id, sender_id, receiver_id, content, created_at,
                    ${CREATED_AT_PRECISE_SQL} AS created_at_precise`,
@@ -250,6 +327,9 @@ export async function sendMessage(
       )
 
       if (inserted.rowCount === 1) {
+        // 消息与双方会话记录在同一事务内完成，绝不出现“消息已保存、会话未更新”
+        await maintainConversations(client, inserted.rows[0])
+
         await client.query('COMMIT')
         transactionOpen = false
         return { message: toMessageItem(inserted.rows[0]), created: true }
@@ -301,13 +381,13 @@ export async function getMessageHistory(
   }
 
   const cursor = before ? decodeMessageCursor(before) : null
-  const values: Array<string | number> = [currentUserId, friendId]
+  const values: Array<string | number | Date> = [currentUserId, friendId, retentionCutoff()]
   let cursorClause = ''
 
   if (cursor) {
     // created_at 使用服务端生成的微秒精度文本，id 作为同一时间的第二排序键
     values.push(cursor.createdAt, cursor.id)
-    cursorClause = 'AND (created_at, id) < ($3::timestamptz, $4::bigint)'
+    cursorClause = 'AND (created_at, id) < ($4::timestamptz, $5::bigint)'
   }
 
   values.push(limit + 1)
@@ -329,6 +409,7 @@ export async function getMessageHistory(
             OR (sender_id = $2 AND receiver_id = $1)
              )
          ${cursorClause}
+         AND created_at >= $3::timestamptz
        ORDER BY created_at DESC, id DESC
        LIMIT ${limitParameter}`,
       values
@@ -353,4 +434,91 @@ export async function getMessageHistory(
 
     throw error
   }
+}
+
+/**
+ * 增量同步：按 (created_at, id) 升序返回游标之后的消息。
+ *
+ * 与历史查询（从新到旧）互补，用于客户端把本地缺失的消息按时间顺序补齐：
+ * 1. 只返回保留期内的消息，与清理任务保持同一时间边界；
+ * 2. 游标为 null 时从保留期最早一条开始（首次同步）；
+ * 3. nextCursor 始终指向本页最后一条消息，便于客户端逐页推进并在中断后继续。
+ */
+export async function getMessagesAfter(
+  currentUserId: string,
+  friendId: string,
+  limit: number,
+  after?: string
+): Promise<MessageHistoryPage> {
+  const userResult = await pool.query('SELECT id FROM users WHERE id = $1 AND is_deleted = FALSE', [
+    friendId
+  ])
+
+  if (userResult.rowCount === 0) {
+    throw new MessageUserNotFoundError()
+  }
+
+  const cursor = after ? decodeMessageCursor(after) : null
+  const values: Array<string | number | Date> = [currentUserId, friendId, retentionCutoff()]
+  let cursorClause = ''
+
+  if (cursor) {
+    values.push(cursor.createdAt, cursor.id)
+    cursorClause = 'AND (created_at, id) > ($4::timestamptz, $5::bigint)'
+  }
+
+  values.push(limit + 1)
+  const limitParameter = `$${values.length}`
+
+  try {
+    const result = await pool.query<HistoryRow>(
+      `SELECT
+         id,
+         message_id,
+         sender_id,
+         receiver_id,
+         content,
+         created_at,
+         ${CREATED_AT_PRECISE_SQL} AS created_at_precise
+       FROM messages
+       WHERE (
+               (sender_id = $1 AND receiver_id = $2)
+            OR (sender_id = $2 AND receiver_id = $1)
+             )
+         ${cursorClause}
+         AND created_at >= $3::timestamptz
+       ORDER BY created_at ASC, id ASC
+       LIMIT ${limitParameter}`,
+      values
+    )
+
+    const hasMore = result.rows.length > limit
+    const pageRows = hasMore ? result.rows.slice(0, limit) : result.rows
+    const lastRow = pageRows[pageRows.length - 1]
+    const nextCursor = lastRow
+      ? encodeMessageCursor(lastRow.created_at_precise, String(lastRow.id))
+      : null
+
+    return { messages: pageRows.map(toMessageItem), hasMore, nextCursor }
+  } catch (error) {
+    if (isInvalidDatetimeError(error)) {
+      throw new InvalidMessageCursorError()
+    }
+
+    throw error
+  }
+}
+
+/**
+ * 删除超过保留期的消息。
+ *
+ * 只影响服务端存储：客户端已经同步到本地的记录不受影响，
+ * 清理后客户端也不会再通过增量同步重新下载这些消息（游标只会前进）。
+ */
+export async function deleteExpiredMessages(): Promise<number> {
+  const result = await pool.query('DELETE FROM messages WHERE created_at < $1::timestamptz', [
+    retentionCutoff()
+  ])
+
+  return result.rowCount ?? 0
 }

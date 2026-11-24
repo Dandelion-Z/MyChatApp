@@ -16,6 +16,8 @@
     "db:seed-test-users": "tsx database/scripts/seed-test-users.ts",
     "start": "electron-vite preview",
     "dev": "electron-vite dev",
+    "update:fake-server": "node scripts/fake-update-server.mjs",
+    "test:packaged": "node scripts/test-packaged-update.mjs",
     "build": "npm run typecheck && electron-vite build",
     "postinstall": "install-electron && electron-builder install-app-deps",
     "build:unpack": "npm run build && electron-builder --dir",
@@ -26,6 +28,7 @@
   "dependencies": {
     "@electron-toolkit/preload": "^3.0.2",
     "@electron-toolkit/utils": "^4.0.0",
+    "electron-updater": "^6.6.2",
     "socket.io-client": "^4.8.4"
   },
   "devDependencies": {
