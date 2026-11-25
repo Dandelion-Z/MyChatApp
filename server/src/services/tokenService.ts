@@ -1,6 +1,7 @@
 import { createHash, randomBytes } from 'node:crypto'
 import { pool } from '../database/pool'
 import { signAccessToken } from './jwt'
+import { recordDailyLoginActivity } from './activityService'
 
 /** 勾选自动登录：Refresh Token 30 天滚动有效期 */
 export const PERSISTENT_REFRESH_TTL_SECONDS = 30 * 24 * 60 * 60
@@ -185,6 +186,9 @@ export async function rotateRefreshToken(token: string): Promise<RefreshRotation
     )
 
     await client.query('COMMIT')
+
+    // Refresh Token 验证并轮换成功：与密码登录共用每日一次积分限制
+    await recordDailyLoginActivity(userId)
 
     return {
       ...issued,

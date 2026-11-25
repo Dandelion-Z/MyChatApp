@@ -34,6 +34,8 @@ export type AuthContextValue = {
   login: (username: string, password: string, autoLogin: boolean) => Promise<void>
   logout: () => void
   requestWithAuth: <T>(path: string, options?: RequestOptions) => Promise<T>
+  /** 当前设备持有的 Refresh Token；仅用于需要保留本设备会话的操作（如修改密码） */
+  getRefreshToken: () => string | null
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null)
@@ -440,9 +442,11 @@ export function AuthProvider({ children }: { children: ReactNode }): React.JSX.E
     }
   }, [clearTimer])
 
+  const getRefreshToken = useCallback((): string | null => refreshTokenRef.current, [])
+
   const value = useMemo<AuthContextValue>(
-    () => ({ status, user, notice, login, logout, requestWithAuth }),
-    [status, user, notice, login, logout, requestWithAuth]
+    () => ({ status, user, notice, login, logout, requestWithAuth, getRefreshToken }),
+    [status, user, notice, login, logout, requestWithAuth, getRefreshToken]
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

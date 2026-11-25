@@ -22,8 +22,13 @@ import { getMessageHistory } from '../api/messages'
 import type { MessageItem } from '../api/messages'
 import type { LocalChatSummary, LocalMessageItem } from '../../../shared/localMessages'
 import { useAuth } from '../auth/AuthContext'
+import { getMyProfile } from '../api/profile'
 import { Badge } from './Badge'
+import { Avatar } from './Avatar'
+import { ChangePasswordDialog } from '../profile/ChangePasswordDialog'
+import { ProfilePage } from '../profile/ProfilePage'
 import { groupContacts } from '../contacts/groups'
+import { getFriendDisplayName } from '../friends/displayName'
 import {
   deleteLocalChat,
   deleteLocalFriendData,
@@ -95,22 +100,8 @@ const REFRESH_THROTTLE_MS = 250
 const TIME_LABEL_GAP_MS = 5 * 60 * 1000
 
 function getDisplayName(friend: Friend): string {
-  return friend.nickname || friend.username
-}
-
-/** 统一默认头像占位图形，本阶段不接头像上传 */
-function PlaceholderAvatar({ size }: { size: number }): React.JSX.Element {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <circle cx="12" cy="8.2" r="3.8" fill="currentColor" />
-      <path
-        d="M4.2 20.4c0-3.7 3.5-6.6 7.8-6.6s7.8 2.9 7.8 6.6"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-      />
-    </svg>
-  )
+  // 好友列表优先显示当前用户设置的备注，未设置时回退昵称；登录用户名不对外展示
+  return getFriendDisplayName(friend)
 }
 
 function formatTime(date: Date): string {
@@ -457,6 +448,58 @@ const MIDDLE_COLUMN_DEFAULT_WIDTH = 280
 const MIDDLE_COLUMN_MIN_WIDTH = 220
 const MIDDLE_COLUMN_MAX_WIDTH = 420
 
+// 基础 Emoji：仅使用 Unicode 字符，作为普通文本插入与发送
+const EMOJI_OPTIONS = [
+  '😀',
+  '😄',
+  '😁',
+  '😆',
+  '😅',
+  '😂',
+  '🤣',
+  '🙂',
+  '😉',
+  '😊',
+  '😍',
+  '🥰',
+  '😘',
+  '😜',
+  '🤪',
+  '😎',
+  '🤔',
+  '🙄',
+  '😴',
+  '🥱',
+  '😢',
+  '😭',
+  '😤',
+  '😡',
+  '👍',
+  '👎',
+  '👏',
+  '🙏',
+  '💪',
+  '👌',
+  '✌️',
+  '🤝',
+  '❤️',
+  '💔',
+  '💯',
+  '🎉',
+  '🔥',
+  '✨',
+  '🌹',
+  '🍀',
+  '☀️',
+  '🌙',
+  '⭐️',
+  '🍺',
+  '☕️',
+  '🍰',
+  '🎁',
+  '🚀'
+]
+
 /** 读取上次调整的输入框高度；无记录或数据损坏时回落到最小高度 */
 function readStoredComposerHeight(): number {
   try {
@@ -508,7 +551,7 @@ function compareServerConversations(left: ServerConversation, right: ServerConve
 }
 
 function ChatScreen(): React.JSX.Element {
-  const { user, logout, requestWithAuth } = useAuth()
+  const { user, logout, requestWithAuth, getRefreshToken } = useAuth()
 
   const [friends, setFriends] = useState<Friend[]>([])
   const [activeFriendId, setActiveFriendId] = useState<string | null>(null)
@@ -552,6 +595,38 @@ function ChatScreen(): React.JSX.Element {
   const [composerHeight, setComposerHeight] = useState<number>(() => readStoredComposerHeight())
   // 中栏宽度：仅当前窗口内生效，不持久化
   const [middleColumnWidth, setMiddleColumnWidth] = useState<number>(MIDDLE_COLUMN_DEFAULT_WIDTH)
+  // 表情面板是否展开：固定在输入区底部左侧按钮旁弹出
+  const [emojiOpen, setEmojiOpen] = useState(false)
+  // 个人资料页：占据右侧聊天区域，但不影响选中的会话与草稿
+  const [profileOpen, setProfileOpen] = useState(false)
+  /** 当前登录用户自己的头像；上传/恢复默认后由资料页回调即时更新 */
+  const [selfAvatarUrl, setSelfAvatarUrl] = useState<string | null>(null)
+
+  // 启动/切换账号时读取自己的头像，供导航栏、自我聊天与消息头像复用
+  useEffect(() => {
+    if (!user?.id) {
+      setSelfAvatarUrl(null)
+      return
+    }
+
+    let active = true
+
+    void getMyProfile(requestWithAuth)
+      .then((profile) => {
+        if (active) {
+          setSelfAvatarUrl(profile.avatarUrl)
+        }
+      })
+      .catch(() => {
+        // 拉取失败时保持默认头像，不影响其他界面使用
+      })
+
+    return () => {
+      active = false
+    }
+  }, [requestWithAuth, user?.id])
+  // 好友资料页：与自己的资料页共用同一个组件，仅访问模式不同
+  const [profileFriend, setProfileFriend] = useState<Friend | null>(null)
   const [listStatus, setListStatus] = useState<ListStatus>('loading')
   const [listError, setListError] = useState<string | null>(null)
   // 在线好友 ID 集合，只用于好友列表的绿色圆点
@@ -561,11 +636,14 @@ function ChatScreen(): React.JSX.Element {
 
   // 添加好友表单状态
   const [addOpen, setAddOpen] = useState<boolean>(false)
-  const [addUsername, setAddUsername] = useState<string>('')
+  const [addUid, setAddUid] = useState<string>('')
   const [addSubmitting, setAddSubmitting] = useState<boolean>(false)
   const [addError, setAddError] = useState<string | null>(null)
-  const [addNotice, setAddNotice] = useState<string | null>(null)
-  const [addNoticeWarning, setAddNoticeWarning] = useState<boolean>(false)
+  // 发送申请成功后的轻量 Toast：约 1 秒自动消失，不拦截操作
+  const [toast, setToast] = useState<string | null>(null)
+  // 修改密码弹窗：从左侧底部账户菜单打开
+  const [passwordOpen, setPasswordOpen] = useState<boolean>(false)
+  const toastTimerRef = useRef<number | null>(null)
   // 用 ref 做同步防重入，避免连续点击在 React 状态更新前重复提交
   const addSubmittingRef = useRef<boolean>(false)
   const isMountedRef = useRef<boolean>(true)
@@ -592,6 +670,11 @@ function ChatScreen(): React.JSX.Element {
   const chatMenuRef = useRef<HTMLDivElement | null>(null)
   // 会话管理状态写入中：避免连点造成同一会话并发写库
   const chatFlagUpdatingRef = useRef<boolean>(false)
+  // 会话设置侧边栏：置顶 / 免打扰，开关状态始终以服务端会话为准
+  const [settingsOpen, setSettingsOpen] = useState<boolean>(false)
+  const [settingsBusy, setSettingsBusy] = useState<boolean>(false)
+  const chatSettingsRef = useRef<HTMLElement | null>(null)
+  const chatSettingsButtonRef = useRef<HTMLButtonElement | null>(null)
   // 与 chatEntries 同步的 ref：收到实时消息时读取免打扰状态，避免闭包拿到旧列表
   const chatEntriesRef = useRef<LocalChatSummary[]>([])
   // 与 serverConversations 同步的 ref：写操作需要用最新的 version 做乐观并发控制
@@ -622,7 +705,12 @@ function ChatScreen(): React.JSX.Element {
   // 输入框当前高度与拖动起点，用 ref 保证拖动过程读取到最新值
   const composerHeightRef = useRef<number>(composerHeight)
   const composerResizeRef = useRef<{ startY: number; startHeight: number } | null>(null)
+  // 拖动高度前的聊天滚动位置：用于拖动过程中保持视觉位置稳定
+  const composerScrollRef = useRef<{ stickToBottom: boolean; scrollTop: number } | null>(null)
   const middleColumnResizeRef = useRef<{ startX: number; startWidth: number } | null>(null)
+  // 表情面板与按钮：用于判断点击是否落在面板外
+  const emojiPanelRef = useRef<HTMLDivElement | null>(null)
+  const emojiButtonRef = useRef<HTMLButtonElement | null>(null)
   // 每个会话的输入框光标 / 选区 / 内部滚动位置，只在内存中保存
   const composerSelectionsRef = useRef<Map<string, ComposerSelection>>(new Map())
   // 已经自动聚焦过的会话：同一个会话重渲染或窗口重新聚焦时不再抢焦点
@@ -713,13 +801,14 @@ function ChatScreen(): React.JSX.Element {
 
     return {
       id: user.id,
-      username: user.username,
       nickname: user.nickname,
       createdAt: '',
       isStarred: false,
-      starredAt: null
+      starredAt: null,
+      remark: null,
+      avatarUrl: selfAvatarUrl
     }
-  }, [user])
+  }, [selfAvatarUrl, user])
 
   const friendsWithSelf = useMemo(
     () => (selfFriend ? [...friends, selfFriend] : friends),
@@ -966,6 +1055,8 @@ function ChatScreen(): React.JSX.Element {
   const openConversation = useCallback(
     async (friendId: string): Promise<void> => {
       setRequestsOpen(false)
+      setProfileOpen(false)
+      setProfileFriend(null)
       setActiveFriendId(friendId)
 
       try {
@@ -1035,6 +1126,36 @@ function ChatScreen(): React.JSX.Element {
       }
     } finally {
       chatFlagUpdatingRef.current = false
+    }
+  }
+
+  /** 会话设置侧边栏：置顶开关；服务端成功后才改变，失败保留原状态并提示 */
+  const handleSettingsTogglePinned = async (): Promise<void> => {
+    if (!activeChatEntry || settingsBusy) {
+      return
+    }
+
+    setSettingsBusy(true)
+
+    try {
+      await toggleChatPinned(activeChatEntry)
+    } finally {
+      setSettingsBusy(false)
+    }
+  }
+
+  /** 会话设置侧边栏：免打扰开关；只影响提醒，不影响消息接收与未读 */
+  const handleSettingsToggleMuted = async (): Promise<void> => {
+    if (!activeChatEntry || settingsBusy) {
+      return
+    }
+
+    setSettingsBusy(true)
+
+    try {
+      await toggleChatMuted(activeChatEntry)
+    } finally {
+      setSettingsBusy(false)
     }
   }
 
@@ -1358,6 +1479,8 @@ function ChatScreen(): React.JSX.Element {
   }, [requestsOpen, loadFriendRequests])
 
   const openFriendRequests = (): void => {
+    setProfileOpen(false)
+    setProfileFriend(null)
     setView('contacts')
     setRequestsOpen(true)
     setSearchQuery('')
@@ -2197,6 +2320,18 @@ function ChatScreen(): React.JSX.Element {
     composerHeightRef.current = composerHeight
   }, [composerHeight])
 
+  // 拖动高度后保持聊天位置：原本贴底则继续贴底，正在看历史则保持 scrollTop
+  useLayoutEffect(() => {
+    const list = messageListRef.current
+    const saved = composerScrollRef.current
+
+    if (!list || !saved) {
+      return
+    }
+
+    list.scrollTop = saved.stickToBottom ? list.scrollHeight : saved.scrollTop
+  }, [composerHeight])
+
   // 窗口尺寸变化时重新检查上限，避免输入框超出聊天区域
   useEffect(() => {
     const handleResize = (): void => {
@@ -2266,9 +2401,15 @@ function ChatScreen(): React.JSX.Element {
   const handleComposerResizeStart = (event: React.PointerEvent<HTMLDivElement>): void => {
     event.preventDefault()
     event.currentTarget.setPointerCapture(event.pointerId)
+    const list = messageListRef.current
     composerResizeRef.current = {
       startY: event.clientY,
       startHeight: composerHeightRef.current
+    }
+    // 记录拖动前的阅读位置：原本贴底就保持贴底，否则固定在当前 scrollTop
+    composerScrollRef.current = {
+      stickToBottom: isNearBottom(list),
+      scrollTop: list?.scrollTop ?? 0
     }
   }
 
@@ -2302,6 +2443,7 @@ function ChatScreen(): React.JSX.Element {
       event.currentTarget.releasePointerCapture(event.pointerId)
     }
 
+    composerScrollRef.current = null
     persistComposerHeight(composerHeightRef.current)
   }
 
@@ -2340,6 +2482,73 @@ function ChatScreen(): React.JSX.Element {
       event.currentTarget.releasePointerCapture(event.pointerId)
     }
   }
+
+  /** 在光标位置插入 Emoji；插入后保持焦点与光标位置，方便继续输入 */
+  const insertEmoji = (emoji: string): void => {
+    if (!activeFriendId) {
+      return
+    }
+
+    const textarea = composerRef.current
+    const current = drafts[activeFriendId] ?? ''
+    const start = textarea ? textarea.selectionStart : current.length
+    const end = textarea ? textarea.selectionEnd : current.length
+    const next = current.slice(0, start) + emoji + current.slice(end)
+
+    if (next.length > MAX_MESSAGE_LENGTH) {
+      return
+    }
+
+    const caret = start + emoji.length
+
+    setDrafts((previous) => ({ ...previous, [activeFriendId]: next }))
+    // 选中表情后收起面板，光标仍回到原插入位置
+    setEmojiOpen(false)
+
+    // 等 React 提交新值后再设置光标，避免光标被重置到末尾
+    window.setTimeout(() => {
+      const element = composerRef.current
+
+      if (!element) {
+        return
+      }
+
+      element.focus({ preventScroll: true })
+      element.setSelectionRange(caret, caret)
+      rememberComposerSelection()
+    }, 0)
+  }
+
+  // 点击面板外部或按 Esc 关闭表情面板
+  useEffect(() => {
+    if (!emojiOpen) {
+      return
+    }
+
+    const handleMouseDown = (event: MouseEvent): void => {
+      const target = event.target as Node
+
+      if (emojiPanelRef.current?.contains(target) || emojiButtonRef.current?.contains(target)) {
+        return
+      }
+
+      setEmojiOpen(false)
+    }
+
+    const handleKeyDown = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') {
+        setEmojiOpen(false)
+      }
+    }
+
+    window.addEventListener('mousedown', handleMouseDown)
+    window.addEventListener('keydown', handleKeyDown)
+
+    return () => {
+      window.removeEventListener('mousedown', handleMouseDown)
+      window.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [emojiOpen])
 
   const activeHistoryStatus = activeFriendId ? historyStatus[activeFriendId] : undefined
   const activeHistoryError = activeFriendId ? (historyError[activeFriendId] ?? '') : ''
@@ -2412,6 +2621,13 @@ function ChatScreen(): React.JSX.Element {
   const menuChatEntry = useMemo(
     () => (chatMenu ? (chatRows.find((entry) => entry.peerId === chatMenu.peerId) ?? null) : null),
     [chatMenu, chatRows]
+  )
+
+  /** 会话设置侧边栏对应的会话：开关显示服务端当前状态 */
+  const activeChatEntry = useMemo(
+    () =>
+      activeFriendId ? (chatRows.find((entry) => entry.peerId === activeFriendId) ?? null) : null,
+    [activeFriendId, chatRows]
   )
 
   /**
@@ -2697,13 +2913,31 @@ function ChatScreen(): React.JSX.Element {
     }
   }
 
+  const showToast = useCallback((message: string): void => {
+    if (toastTimerRef.current !== null) {
+      window.clearTimeout(toastTimerRef.current)
+    }
+
+    setToast(message)
+    toastTimerRef.current = window.setTimeout(() => {
+      toastTimerRef.current = null
+      setToast(null)
+    }, 1000)
+  }, [])
+
+  useEffect(() => {
+    return () => {
+      if (toastTimerRef.current !== null) {
+        window.clearTimeout(toastTimerRef.current)
+      }
+    }
+  }, [])
+
   const openAddFriend = (): void => {
     setAddOpen(true)
     setSearchQuery('')
-    setAddUsername('')
+    setAddUid('')
     setAddError(null)
-    setAddNotice(null)
-    setAddNoticeWarning(false)
   }
 
   const closeAddFriend = (): void => {
@@ -2712,7 +2946,7 @@ function ChatScreen(): React.JSX.Element {
     }
 
     setAddOpen(false)
-    setAddUsername('')
+    setAddUid('')
     setAddError(null)
   }
 
@@ -2724,37 +2958,31 @@ function ChatScreen(): React.JSX.Element {
       return
     }
 
-    const username = addUsername.trim()
+    const uid = addUid.trim()
 
-    if (!username) {
-      setAddError('请输入用户名')
+    if (!uid) {
+      setAddError('请输入对方 UID')
       return
     }
 
     addSubmittingRef.current = true
     setAddSubmitting(true)
     setAddError(null)
-    setAddNotice(null)
-    setAddNoticeWarning(false)
 
     try {
-      const sent = await sendFriendRequest(requestWithAuth, username)
+      await sendFriendRequest(requestWithAuth, uid)
 
       if (!isMountedRef.current) {
         return
       }
 
       setAddOpen(false)
-      setAddUsername('')
-      setAddNotice(`已向 ${sent.user.nickname || sent.user.username} 发送好友申请，等待对方验证`)
-      setAddNoticeWarning(false)
+      setAddUid('')
+      showToast('已成功发送好友申请，等待对方验证')
 
-      // 切到“新的朋友”，让“等待验证”的申请立即可见
+      // 保持当前页面，不自动跳转；已在申请页时刷新列表
       if (requestsOpen) {
         await loadFriendRequests()
-      } else {
-        // 同时切到通讯录视图，避免右侧已是申请页而中间仍是会话列表
-        openFriendRequests()
       }
     } catch (error) {
       if (!isMountedRef.current) {
@@ -2877,6 +3105,7 @@ function ChatScreen(): React.JSX.Element {
       }
 
       setPendingDeleteId(null)
+      setProfileFriend((current) => (current?.id === friend.id ? null : current))
 
       // 星标随好友关系记录一起由服务端删除；重新添加后即普通联系人
 
@@ -3011,6 +3240,54 @@ function ChatScreen(): React.JSX.Element {
     }
   }, [contactMenu])
 
+  // 会话设置侧边栏：点击面板与齿轮以外的位置、按 Esc 或窗口失焦时关闭
+  useEffect(() => {
+    if (!settingsOpen) {
+      return
+    }
+
+    const handlePointerDown = (event: MouseEvent): void => {
+      const target = event.target as Node | null
+
+      if (!target) {
+        return
+      }
+
+      if (chatSettingsRef.current?.contains(target)) {
+        return
+      }
+
+      if (chatSettingsButtonRef.current?.contains(target)) {
+        return
+      }
+
+      setSettingsOpen(false)
+    }
+
+    const handleKeyDown = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') {
+        setSettingsOpen(false)
+      }
+    }
+
+    const handleBlur = (): void => setSettingsOpen(false)
+
+    window.addEventListener('mousedown', handlePointerDown)
+    window.addEventListener('keydown', handleKeyDown)
+    window.addEventListener('blur', handleBlur)
+
+    return () => {
+      window.removeEventListener('mousedown', handlePointerDown)
+      window.removeEventListener('keydown', handleKeyDown)
+      window.removeEventListener('blur', handleBlur)
+    }
+  }, [settingsOpen])
+
+  // 切换会话、进入联系人或其他页面时自动关闭会话设置
+  useEffect(() => {
+    setSettingsOpen(false)
+  }, [activeFriendId, requestsOpen, view])
+
   // 删除好友确认弹窗：按 Esc 关闭；正在提交时不允许中断
   useEffect(() => {
     if (!pendingDeleteId) {
@@ -3031,6 +3308,7 @@ function ChatScreen(): React.JSX.Element {
 
   // 菜单项按数组维护，后续新增选项只需追加一项
   const railMenuItems: { key: string; label: string; onSelect: () => void }[] = [
+    { key: 'password', label: '修改密码', onSelect: () => setPasswordOpen(true) },
     { key: 'logout', label: '退出登录', onSelect: logout }
   ]
 
@@ -3044,6 +3322,63 @@ function ChatScreen(): React.JSX.Element {
    * 通讯录联系人整行：
    * 单击只选中；双击整行打开聊天；右键在鼠标附近弹出操作菜单。
    */
+  // 联系人整行单击进入资料页的延迟定时器：留出双击打开聊天的时间窗
+  const pendingContactProfileRef = useRef<number | null>(null)
+
+  useEffect(() => {
+    return () => {
+      if (pendingContactProfileRef.current !== null) {
+        window.clearTimeout(pendingContactProfileRef.current)
+      }
+    }
+  }, [])
+
+  const cancelPendingContactProfile = (): void => {
+    if (pendingContactProfileRef.current !== null) {
+      window.clearTimeout(pendingContactProfileRef.current)
+      pendingContactProfileRef.current = null
+    }
+  }
+
+  /** 从联系人列表打开好友资料页：只覆盖右侧区域，保留当前会话与草稿 */
+  const openFriendProfile = (friend: Friend): void => {
+    setProfileFriend(friend)
+    setProfileOpen(false)
+    setRequestsOpen(false)
+    setSettingsOpen(false)
+    setEmojiOpen(false)
+    setChatMenu(null)
+    setContactMenu(null)
+    setRailMenuOpen(false)
+  }
+
+  /** 联系人条目统一入口：自己进入自己的资料页，好友进入好友资料页 */
+  const openContactProfile = (friend: Friend): void => {
+    if (friend.id !== user?.id) {
+      openFriendProfile(friend)
+      return
+    }
+
+    setProfileFriend(null)
+    setProfileOpen(true)
+    setRequestsOpen(false)
+    setSettingsOpen(false)
+    setEmojiOpen(false)
+    setChatMenu(null)
+    setContactMenu(null)
+    setRailMenuOpen(false)
+  }
+
+  /** 单击整行进入资料页；双击时由 cancelPendingContactProfile 取消，改为打开聊天 */
+  const scheduleContactProfile = (friend: Friend): void => {
+    setSelectedContactId(friend.id)
+    cancelPendingContactProfile()
+    pendingContactProfileRef.current = window.setTimeout(() => {
+      pendingContactProfileRef.current = null
+      openContactProfile(friend)
+    }, 180)
+  }
+
   const renderFriendRow = (friend: Friend): ReactNode => {
     const displayName = getDisplayName(friend)
     const starred = friend.isStarred
@@ -3053,7 +3388,10 @@ function ChatScreen(): React.JSX.Element {
       <div className="friend-block" key={friend.id}>
         <div
           className="friend-row"
-          onDoubleClick={() => openConversationFromContacts(friend.id)}
+          onDoubleClick={() => {
+            cancelPendingContactProfile()
+            openConversationFromContacts(friend.id)
+          }}
           onContextMenu={(event) => {
             event.preventDefault()
             setSelectedContactId(friend.id)
@@ -3063,10 +3401,10 @@ function ChatScreen(): React.JSX.Element {
           <button
             type="button"
             className={friend.id === selectedContactId ? 'friend-item selected' : 'friend-item'}
-            onClick={() => setSelectedContactId(friend.id)}
+            onClick={() => scheduleContactProfile(friend)}
           >
             <span className="avatar">
-              <PlaceholderAvatar size={24} />
+              <Avatar avatarUrl={friend.avatarUrl} />
               {!isSelf && onlineFriendIds.has(friend.id) && (
                 <span className="online-dot" aria-label="在线" />
               )}
@@ -3091,9 +3429,24 @@ function ChatScreen(): React.JSX.Element {
     <div className="app">
       {/* 左：导航栏 */}
       <nav className="rail" aria-label="主导航">
-        <div className="rail-profile" title={user?.nickname ?? '当前用户'}>
+        <button
+          type="button"
+          className="rail-profile"
+          title={user?.nickname ?? '当前用户'}
+          aria-label="个人资料"
+          onClick={() => {
+            setProfileFriend(null)
+            setProfileOpen(true)
+            setRequestsOpen(false)
+            setSettingsOpen(false)
+            setEmojiOpen(false)
+            setChatMenu(null)
+            setContactMenu(null)
+            setRailMenuOpen(false)
+          }}
+        >
           <span className="rail-avatar" aria-hidden="true">
-            <PlaceholderAvatar size={22} />
+            <Avatar avatarUrl={selfAvatarUrl} />
           </span>
           <span
             className={`rail-presence ${connectionState.tone}`}
@@ -3101,7 +3454,7 @@ function ChatScreen(): React.JSX.Element {
             aria-label={connectionState.text}
             title={connectionState.text}
           />
-        </div>
+        </button>
 
         <div className="rail-nav">
           <button
@@ -3112,6 +3465,8 @@ function ChatScreen(): React.JSX.Element {
             aria-current={view === 'messages' ? 'page' : undefined}
             onClick={() => {
               setRequestsOpen(false)
+              setProfileOpen(false)
+              setProfileFriend(null)
               setView('messages')
             }}
           >
@@ -3142,28 +3497,33 @@ function ChatScreen(): React.JSX.Element {
             aria-current={view === 'contacts' ? 'page' : undefined}
             onClick={() => {
               setRequestsOpen(false)
+              setProfileOpen(false)
+              setProfileFriend(null)
               setView('contacts')
             }}
           >
-            <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-              <path
-                d="M8.8 11.2a3.4 3.4 0 1 0 0-6.8 3.4 3.4 0 0 0 0 6.8Z"
-                stroke="currentColor"
-                strokeWidth="1.6"
-              />
-              <path
-                d="M2.5 19.6c0-3.1 2.8-5.4 6.3-5.4s6.3 2.3 6.3 5.4"
-                stroke="currentColor"
-                strokeWidth="1.6"
-                strokeLinecap="round"
-              />
-              <path
-                d="M16.2 10.9a2.7 2.7 0 1 0 0-5.4M17.9 19.6c0-2.3-1-4.1-2.7-5.2a6 6 0 0 1 6.3 5.2"
-                stroke="currentColor"
-                strokeWidth="1.6"
-                strokeLinecap="round"
-              />
-            </svg>
+            <span className="badge-anchor">
+              <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path
+                  d="M8.8 11.2a3.4 3.4 0 1 0 0-6.8 3.4 3.4 0 0 0 0 6.8Z"
+                  stroke="currentColor"
+                  strokeWidth="1.6"
+                />
+                <path
+                  d="M2.5 19.6c0-3.1 2.8-5.4 6.3-5.4s6.3 2.3 6.3 5.4"
+                  stroke="currentColor"
+                  strokeWidth="1.6"
+                  strokeLinecap="round"
+                />
+                <path
+                  d="M16.2 10.9a2.7 2.7 0 1 0 0-5.4M17.9 19.6c0-2.3-1-4.1-2.7-5.2a6 6 0 0 1 6.3 5.2"
+                  stroke="currentColor"
+                  strokeWidth="1.6"
+                  strokeLinecap="round"
+                />
+              </svg>
+              <Badge count={pendingIncomingCount} className="badge-overlay" />
+            </span>
           </button>
         </div>
 
@@ -3250,10 +3610,11 @@ function ChatScreen(): React.JSX.Element {
                 <input
                   className="add-friend-input"
                   type="text"
-                  value={addUsername}
-                  onChange={(event) => setAddUsername(event.target.value)}
-                  placeholder="输入对方用户名"
-                  aria-label="好友用户名"
+                  value={addUid}
+                  onChange={(event) => setAddUid(event.target.value)}
+                  placeholder="输入对方 UID"
+                  aria-label="好友 UID"
+                  inputMode="numeric"
                   autoFocus
                   disabled={addSubmitting}
                 />
@@ -3262,7 +3623,7 @@ function ChatScreen(): React.JSX.Element {
                   <button
                     className="add-friend-submit"
                     type="submit"
-                    disabled={addSubmitting || addUsername.trim() === ''}
+                    disabled={addSubmitting || addUid.trim() === ''}
                   >
                     {addSubmitting ? '发送中…' : '发送申请'}
                   </button>
@@ -3296,7 +3657,7 @@ function ChatScreen(): React.JSX.Element {
                         onClick={() => openConversationFromSearch(friend.id)}
                       >
                         <span className="avatar avatar-sm" aria-hidden="true">
-                          <PlaceholderAvatar size={20} />
+                          <Avatar avatarUrl={friend.avatarUrl} />
                           {onlineFriendIds.has(friend.id) && (
                             <span className="online-dot" aria-label="在线" />
                           )}
@@ -3312,11 +3673,6 @@ function ChatScreen(): React.JSX.Element {
         </div>
 
         <div className="contacts-tools">
-          {addNotice && (
-            <p className={`add-friend-notice ${addNoticeWarning ? 'warning' : 'success'}`}>
-              {addNotice}
-            </p>
-          )}
           {deleteNotice && (
             <p className={`add-friend-notice ${deleteNoticeWarning ? 'warning' : 'success'}`}>
               {deleteNotice}
@@ -3371,8 +3727,10 @@ function ChatScreen(): React.JSX.Element {
                       setChatMenu({ peerId: entry.peerId, x: event.clientX, y: event.clientY })
                     }}
                   >
-                    <span className="avatar" aria-hidden="true">
-                      <PlaceholderAvatar size={24} />
+                    <span className="chat-entry-avatar">
+                      <span className="avatar" aria-hidden="true">
+                        <Avatar avatarUrl={friend.avatarUrl} />
+                      </span>
                       {unreadCount > 0 && (
                         <Badge
                           count={unreadCount}
@@ -3413,25 +3771,31 @@ function ChatScreen(): React.JSX.Element {
               onClick={openFriendRequests}
               aria-label="新的朋友"
             >
-              <span className="avatar new-friends-avatar" aria-hidden="true">
+              <span className="new-friends-avatar-wrap">
+                <span className="avatar new-friends-avatar" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" fill="none">
+                    <circle cx="10" cy="8" r="3.4" stroke="currentColor" strokeWidth="1.6" />
+                    <path
+                      d="M3.6 19.2c0-3.1 2.9-5.4 6.4-5.4 1.3 0 2.5.3 3.5.9"
+                      stroke="currentColor"
+                      strokeWidth="1.6"
+                      strokeLinecap="round"
+                    />
+                    <path
+                      d="M17.6 14.4v5.4M14.9 17.1h5.4"
+                      stroke="currentColor"
+                      strokeWidth="1.6"
+                      strokeLinecap="round"
+                    />
+                  </svg>
+                </span>
                 {pendingIncomingCount > 0 && (
-                  <Badge mode="dot" className="badge-overlay" label="有新的好友申请" />
+                  <Badge
+                    count={pendingIncomingCount}
+                    className="badge-overlay"
+                    label={`${pendingIncomingCount} 条待处理好友申请`}
+                  />
                 )}
-                <svg viewBox="0 0 24 24" fill="none">
-                  <circle cx="10" cy="8" r="3.4" stroke="currentColor" strokeWidth="1.6" />
-                  <path
-                    d="M3.6 19.2c0-3.1 2.9-5.4 6.4-5.4 1.3 0 2.5.3 3.5.9"
-                    stroke="currentColor"
-                    strokeWidth="1.6"
-                    strokeLinecap="round"
-                  />
-                  <path
-                    d="M17.6 14.4v5.4M14.9 17.1h5.4"
-                    stroke="currentColor"
-                    strokeWidth="1.6"
-                    strokeLinecap="round"
-                  />
-                </svg>
               </span>
               <span className="friend-info">
                 <span className="friend-name">新的朋友</span>
@@ -3457,10 +3821,6 @@ function ChatScreen(): React.JSX.Element {
                   {group.friends.map(renderFriendRow)}
                 </div>
               ))}
-
-              {listStatus === 'ready' && friends.length === 0 && (
-                <p className="list-state">还没有好友</p>
-              )}
 
               {listStatus === 'ready' && starredFriends.length > 0 && (
                 <div className="contact-group">
@@ -3510,237 +3870,406 @@ function ChatScreen(): React.JSX.Element {
 
       {/* 右：聊天区域 */}
       <main className="chat" ref={chatAreaRef}>
-        {requestsOpen ? (
-          <section className="requests-panel" aria-label="好友申请">
-            <header className="chat-header requests-header">
-              <div className="chat-title">
-                <span className="chat-name">新的朋友</span>
-                <span className="chat-presence">收到和发出的好友申请</span>
-              </div>
-            </header>
-
-            <div className="requests-body">
-              {requestsStatus === 'loading' && friendRequests.length === 0 && (
-                <p className="list-state">正在加载好友申请…</p>
-              )}
-
-              {requestsStatus === 'error' && (
-                <div className="list-state list-state-error">
-                  <p>{requestsError ?? '好友申请加载失败'}</p>
-                  <button
-                    className="list-retry"
-                    type="button"
-                    onClick={() => void loadFriendRequests()}
-                  >
-                    重新加载
-                  </button>
+        <div
+          className={profileOpen || profileFriend ? 'chat-stage chat-stage-hidden' : 'chat-stage'}
+        >
+          {requestsOpen ? (
+            <section className="requests-panel" aria-label="好友申请">
+              <header className="chat-header requests-header">
+                <div className="chat-title">
+                  <span className="chat-name">新的朋友</span>
                 </div>
-              )}
+              </header>
 
-              {requestActionError && <p className="request-action-error">{requestActionError}</p>}
+              <div className="requests-body">
+                {requestsStatus === 'loading' && friendRequests.length === 0 && (
+                  <p className="list-state">正在加载好友申请…</p>
+                )}
 
-              {requestsStatus === 'ready' && friendRequests.length === 0 && (
-                <p className="list-state">还没有好友申请</p>
-              )}
-
-              {friendRequests.map((item) => {
-                const displayName = item.user.nickname || item.user.username
-                const isIncomingPending = item.direction === 'incoming' && item.status === 'pending'
-                const handling = requestActionId === item.id
-
-                return (
-                  <div className="request-row" key={item.id}>
-                    <span className="avatar" aria-hidden="true">
-                      <PlaceholderAvatar size={24} />
-                    </span>
-
-                    <div className="request-info">
-                      <span className="request-name">{displayName}</span>
-                      <span className="request-meta">
-                        {item.direction === 'incoming' ? '请求添加你为好友' : '你发送的申请'} ·{' '}
-                        {formatTimeLabel(item.createdAt)}
-                      </span>
-                    </div>
-
-                    <div className="request-actions">
-                      {isIncomingPending ? (
-                        <>
-                          <button
-                            className="request-accept"
-                            type="button"
-                            disabled={requestActionId !== null}
-                            onClick={() => void handleRequestDecision(item, 'accept')}
-                          >
-                            {handling ? '处理中…' : '同意'}
-                          </button>
-                          <button
-                            className="request-reject"
-                            type="button"
-                            disabled={requestActionId !== null}
-                            onClick={() => void handleRequestDecision(item, 'reject')}
-                          >
-                            拒绝
-                          </button>
-                        </>
-                      ) : (
-                        <span className={`request-status ${item.status}`}>
-                          {getFriendRequestStatusLabel(item.status)}
-                        </span>
-                      )}
-                    </div>
+                {requestsStatus === 'error' && (
+                  <div className="list-state list-state-error">
+                    <p>{requestsError ?? '好友申请加载失败'}</p>
+                    <button
+                      className="list-retry"
+                      type="button"
+                      onClick={() => void loadFriendRequests()}
+                    >
+                      重新加载
+                    </button>
                   </div>
-                )
-              })}
-            </div>
-          </section>
-        ) : view === 'contacts' ? null : activeFriend ? (
-          <>
-            {/* 顶部只保留昵称与在线绿点；自我聊天没有在线状态 */}
-            <header className="chat-header">
-              <span className="chat-name">{getDisplayName(activeFriend)}</span>
-              {activeFriend.id !== user?.id && onlineFriendIds.has(activeFriend.id) && (
-                <span className="chat-online-dot" role="img" aria-label="在线" />
-              )}
-            </header>
+                )}
 
-            <div className="messages" ref={messageListRef} onScroll={handleMessagesScroll}>
-              {activePagination?.loadingMore && (
-                <p className="messages-load-more">正在加载更早的消息…</p>
-              )}
+                {requestActionError && <p className="request-action-error">{requestActionError}</p>}
 
-              {activePagination?.error && (
-                <div className="messages-load-more messages-load-more-error">
-                  <p>{activePagination.error}</p>
-                  <button
-                    className="list-retry"
-                    type="button"
-                    onClick={() => {
-                      if (activeFriend) {
-                        void loadOlderMessages(activeFriend.id)
-                      }
-                    }}
-                  >
-                    重试
-                  </button>
-                </div>
-              )}
+                {requestsStatus === 'ready' && friendRequests.length === 0 && (
+                  <p className="list-state">还没有好友申请</p>
+                )}
 
-              {activeHistoryStatus === 'loading' && (
-                <p className="messages-state">正在加载历史消息…</p>
-              )}
+                {friendRequests.map((item) => {
+                  const displayName = item.user.nickname
+                  const isIncomingPending =
+                    item.direction === 'incoming' && item.status === 'pending'
+                  const handling = requestActionId === item.id
 
-              {activeHistoryStatus === 'error' && (
-                <div className="messages-state messages-state-error">
-                  <p>{activeHistoryError || '历史消息加载失败，请稍后重试。'}</p>
-                  <button
-                    className="list-retry"
-                    type="button"
-                    onClick={() => {
-                      if (activeFriend) {
-                        void loadHistory(activeFriend.id)
-                      }
-                    }}
-                  >
-                    重新加载
-                  </button>
-                </div>
-              )}
+                  return (
+                    <div className="request-row" key={item.id}>
+                      <span className="avatar" aria-hidden="true">
+                        <Avatar avatarUrl={item.user.avatarUrl} />
+                      </span>
 
-              {activeHistoryStatus === 'ready' && activeMessages.length === 0 && (
-                <p className="messages-empty">暂无聊天记录</p>
-              )}
-
-              {activeMessages.map((message, index) => {
-                const previousCreatedAt = index > 0 ? activeMessages[index - 1].createdAt : null
-                const timeLabel = shouldShowTimeLabel(previousCreatedAt, message.createdAt)
-                  ? formatTimeLabel(message.createdAt)
-                  : ''
-
-                return (
-                  <Fragment key={message.messageId}>
-                    {timeLabel !== '' && <div className="time-divider">{timeLabel}</div>}
-
-                    <div className={message.mine ? 'message-row mine' : 'message-row'}>
-                      {!message.mine && (
-                        <span className="message-avatar" aria-hidden="true">
-                          <PlaceholderAvatar size={20} />
+                      <div className="request-info">
+                        <span className="request-name">{displayName}</span>
+                        <span className="request-meta">
+                          {item.direction === 'incoming' ? '请求添加你为好友' : '你发送的申请'} ·{' '}
+                          {formatTimeLabel(item.createdAt)}
                         </span>
-                      )}
+                      </div>
 
-                      <div
-                        className={message.status === 'failed' ? 'bubble bubble-failed' : 'bubble'}
-                      >
-                        <p className="bubble-text">{message.text}</p>
-                        {message.status === 'sending' && (
-                          <span className="bubble-status">发送中…</span>
-                        )}
-                        {message.status === 'failed' && (
-                          <span className="bubble-error">
-                            {message.error ?? '发送失败'}
+                      <div className="request-actions">
+                        {isIncomingPending ? (
+                          <>
                             <button
-                              className="bubble-retry"
+                              className="request-accept"
                               type="button"
-                              onClick={() => retryMessage(activeFriend.id, message)}
+                              disabled={requestActionId !== null}
+                              onClick={() => void handleRequestDecision(item, 'accept')}
                             >
-                              重发
+                              {handling ? '处理中…' : '同意'}
                             </button>
+                            <button
+                              className="request-reject"
+                              type="button"
+                              disabled={requestActionId !== null}
+                              onClick={() => void handleRequestDecision(item, 'reject')}
+                            >
+                              拒绝
+                            </button>
+                          </>
+                        ) : (
+                          <span className={`request-status ${item.status}`}>
+                            {getFriendRequestStatusLabel(item.status)}
                           </span>
                         )}
                       </div>
-
-                      {message.mine && (
-                        <span className="message-avatar" aria-hidden="true">
-                          <PlaceholderAvatar size={20} />
-                        </span>
-                      )}
                     </div>
-                  </Fragment>
-                )
-              })}
-            </div>
-
-            <form className="composer" onSubmit={handleSubmit}>
-              <div
-                className="composer-resize-handle"
-                role="separator"
-                aria-orientation="horizontal"
-                aria-label="拖动调整输入框高度"
-                title="拖动调整输入框高度"
-                onPointerDown={handleComposerResizeStart}
-                onPointerMove={handleComposerResizeMove}
-                onPointerUp={handleComposerResizeEnd}
-                onPointerCancel={handleComposerResizeEnd}
-              >
-                <span className="composer-resize-bar" aria-hidden="true" />
+                  )
+                })}
               </div>
-              <textarea
-                className="composer-input"
-                ref={composerRef}
-                rows={1}
-                style={{ height: `${composerHeight}px` }}
-                value={activeDraft}
-                maxLength={MAX_MESSAGE_LENGTH}
-                onChange={handleDraftChange}
-                onKeyDown={handleComposerKeyDown}
-                onKeyUp={rememberComposerSelection}
-                onSelect={rememberComposerSelection}
-                onScroll={rememberComposerSelection}
-                onBlur={rememberComposerSelection}
-                placeholder="输入消息，按 Enter 发送"
-                aria-label="消息输入框"
-              />
-              <button className="send-button" type="submit" disabled={activeDraft.trim() === ''}>
-                发送
-              </button>
-            </form>
-          </>
-        ) : (
-          <div className="chat-empty">
-            {listStatus === 'loading' && '正在加载…'}
-            {listStatus === 'error' && '好友列表加载失败，请在左侧重新加载'}
-            {listStatus === 'ready' && friends.length === 0 && '还没有好友，添加好友后就可以聊天了'}
-            {listStatus === 'ready' && friends.length > 0 && '从左侧选择一个聊天开始'}
-          </div>
+            </section>
+          ) : view === 'contacts' ? null : activeFriend ? (
+            <>
+              {/* 顶部只保留昵称与在线绿点；自我聊天没有在线状态 */}
+              <header className="chat-header">
+                <span className="chat-header-avatar" aria-hidden="true">
+                  <Avatar avatarUrl={activeFriend.avatarUrl} />
+                </span>
+                <span className="chat-name">{getDisplayName(activeFriend)}</span>
+                {activeFriend.id !== user?.id && onlineFriendIds.has(activeFriend.id) && (
+                  <span className="chat-online-dot" role="img" aria-label="在线" />
+                )}
+                <button
+                  ref={chatSettingsButtonRef}
+                  className="chat-settings-toggle"
+                  type="button"
+                  aria-label="聊天设置"
+                  aria-expanded={settingsOpen}
+                  title="聊天设置"
+                  onClick={() => setSettingsOpen((open) => !open)}
+                >
+                  <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                    <circle cx="12" cy="12" r="3.1" stroke="currentColor" strokeWidth="1.6" />
+                    <path
+                      d="M19.1 13.5a7.6 7.6 0 0 0 0-3l1.6-1.2-1.9-3.3-1.9.8a7.7 7.7 0 0 0-2.6-1.5L14 3.3h-4l-.3 2a7.7 7.7 0 0 0-2.6 1.5l-1.9-.8-1.9 3.3 1.6 1.2a7.6 7.6 0 0 0 0 3l-1.6 1.2 1.9 3.3 1.9-.8a7.7 7.7 0 0 0 2.6 1.5l.3 2h4l.3-2a7.7 7.7 0 0 0 2.6-1.5l1.9.8 1.9-3.3-1.6-1.2Z"
+                      stroke="currentColor"
+                      strokeWidth="1.6"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                </button>
+              </header>
+
+              <div className="chat-body">
+                <div className="chat-main">
+                  <div className="messages" ref={messageListRef} onScroll={handleMessagesScroll}>
+                    {activePagination?.loadingMore && (
+                      <p className="messages-load-more">正在加载更早的消息…</p>
+                    )}
+
+                    {activePagination?.error && (
+                      <div className="messages-load-more messages-load-more-error">
+                        <p>{activePagination.error}</p>
+                        <button
+                          className="list-retry"
+                          type="button"
+                          onClick={() => {
+                            if (activeFriend) {
+                              void loadOlderMessages(activeFriend.id)
+                            }
+                          }}
+                        >
+                          重试
+                        </button>
+                      </div>
+                    )}
+
+                    {activeHistoryStatus === 'loading' && (
+                      <p className="messages-state">正在加载历史消息…</p>
+                    )}
+
+                    {activeHistoryStatus === 'error' && (
+                      <div className="messages-state messages-state-error">
+                        <p>{activeHistoryError || '历史消息加载失败，请稍后重试。'}</p>
+                        <button
+                          className="list-retry"
+                          type="button"
+                          onClick={() => {
+                            if (activeFriend) {
+                              void loadHistory(activeFriend.id)
+                            }
+                          }}
+                        >
+                          重新加载
+                        </button>
+                      </div>
+                    )}
+
+                    {activeHistoryStatus === 'ready' && activeMessages.length === 0 && (
+                      <p className="messages-empty">暂无聊天记录</p>
+                    )}
+
+                    {activeMessages.map((message, index) => {
+                      const previousCreatedAt =
+                        index > 0 ? activeMessages[index - 1].createdAt : null
+                      const timeLabel = shouldShowTimeLabel(previousCreatedAt, message.createdAt)
+                        ? formatTimeLabel(message.createdAt)
+                        : ''
+
+                      return (
+                        <Fragment key={message.messageId}>
+                          {timeLabel !== '' && <div className="time-divider">{timeLabel}</div>}
+
+                          <div className={message.mine ? 'message-row mine' : 'message-row'}>
+                            {!message.mine && (
+                              <span className="message-avatar" aria-hidden="true">
+                                <Avatar avatarUrl={activeFriend.avatarUrl} />
+                              </span>
+                            )}
+
+                            <div
+                              className={
+                                message.status === 'failed' ? 'bubble bubble-failed' : 'bubble'
+                              }
+                            >
+                              <p className="bubble-text">{message.text}</p>
+                              {message.status === 'sending' && (
+                                <span className="bubble-status">发送中…</span>
+                              )}
+                              {message.status === 'failed' && (
+                                <span className="bubble-error">
+                                  {message.error ?? '发送失败'}
+                                  <button
+                                    className="bubble-retry"
+                                    type="button"
+                                    onClick={() => retryMessage(activeFriend.id, message)}
+                                  >
+                                    重发
+                                  </button>
+                                </span>
+                              )}
+                            </div>
+
+                            {message.mine && (
+                              <span className="message-avatar" aria-hidden="true">
+                                <Avatar avatarUrl={selfAvatarUrl} />
+                              </span>
+                            )}
+                          </div>
+                        </Fragment>
+                      )
+                    })}
+                  </div>
+
+                  <form className="composer" onSubmit={handleSubmit}>
+                    <div
+                      className="composer-resize-handle"
+                      role="separator"
+                      aria-orientation="horizontal"
+                      aria-label="拖动调整输入框高度"
+                      title="拖动调整输入框高度"
+                      onPointerDown={handleComposerResizeStart}
+                      onPointerMove={handleComposerResizeMove}
+                      onPointerUp={handleComposerResizeEnd}
+                      onPointerCancel={handleComposerResizeEnd}
+                    />
+                    <div className="composer-input-row">
+                      <textarea
+                        className="composer-input"
+                        ref={composerRef}
+                        rows={1}
+                        style={{ height: `${composerHeight}px` }}
+                        value={activeDraft}
+                        maxLength={MAX_MESSAGE_LENGTH}
+                        onChange={handleDraftChange}
+                        onKeyDown={handleComposerKeyDown}
+                        onKeyUp={rememberComposerSelection}
+                        onSelect={rememberComposerSelection}
+                        onScroll={rememberComposerSelection}
+                        onBlur={rememberComposerSelection}
+                        placeholder="输入消息，按 Enter 发送"
+                        aria-label="消息输入框"
+                      />
+                    </div>
+
+                    {/* 底部操作区：表情入口固定在输入框左下角，不随内容高度移动 */}
+                    <div className="composer-actions">
+                      <button
+                        ref={emojiButtonRef}
+                        type="button"
+                        className={emojiOpen ? 'emoji-toggle open' : 'emoji-toggle'}
+                        aria-label="表情"
+                        aria-expanded={emojiOpen}
+                        title="表情"
+                        onClick={() => setEmojiOpen((open) => !open)}
+                      >
+                        <svg
+                          width="20"
+                          height="20"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          aria-hidden="true"
+                        >
+                          <circle cx="12" cy="12" r="8.2" stroke="currentColor" strokeWidth="1.6" />
+                          <circle cx="9.2" cy="10.2" r="1.05" fill="currentColor" />
+                          <circle cx="14.8" cy="10.2" r="1.05" fill="currentColor" />
+                          <path
+                            d="M8.4 13.6c.9 1.5 2.2 2.3 3.6 2.3s2.7-.8 3.6-2.3"
+                            stroke="currentColor"
+                            strokeWidth="1.6"
+                            strokeLinecap="round"
+                          />
+                        </svg>
+                      </button>
+
+                      <button
+                        className="send-button"
+                        type="submit"
+                        disabled={activeDraft.trim() === ''}
+                      >
+                        发送
+                      </button>
+                    </div>
+
+                    {emojiOpen && (
+                      <div
+                        ref={emojiPanelRef}
+                        className="emoji-panel"
+                        role="listbox"
+                        aria-label="常用表情"
+                      >
+                        {EMOJI_OPTIONS.map((emoji) => (
+                          <button
+                            key={emoji}
+                            type="button"
+                            className="emoji-item"
+                            role="option"
+                            aria-label={`插入表情 ${emoji}`}
+                            onClick={() => insertEmoji(emoji)}
+                          >
+                            {emoji}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </form>
+                </div>
+
+                <aside
+                  ref={chatSettingsRef}
+                  className={`chat-settings${settingsOpen ? ' open' : ''}`}
+                  aria-label="会话设置"
+                >
+                  <div className="chat-settings-inner">
+                    <div className="chat-setting-row">
+                      <span className="chat-setting-label">置顶聊天</span>
+                      <button
+                        className="toggle-switch"
+                        type="button"
+                        role="switch"
+                        aria-checked={activeChatEntry?.isPinned === true}
+                        aria-label="置顶聊天"
+                        disabled={settingsBusy || !activeChatEntry}
+                        onClick={() => void handleSettingsTogglePinned()}
+                      >
+                        <span className="toggle-knob" aria-hidden="true" />
+                      </button>
+                    </div>
+
+                    {activeFriend.id !== user?.id && (
+                      <div className="chat-setting-row">
+                        <span className="chat-setting-label">消息免打扰</span>
+                        <button
+                          className="toggle-switch"
+                          type="button"
+                          role="switch"
+                          aria-checked={activeChatEntry?.isMuted === true}
+                          aria-label="消息免打扰"
+                          disabled={settingsBusy || !activeChatEntry}
+                          onClick={() => void handleSettingsToggleMuted()}
+                        >
+                          <span className="toggle-knob" aria-hidden="true" />
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </aside>
+              </div>
+            </>
+          ) : (
+            <div className="chat-empty">
+              {listStatus === 'loading' && '正在加载…'}
+              {listStatus === 'error' && '好友列表加载失败，请在左侧重新加载'}
+              {listStatus === 'ready' &&
+                friends.length === 0 &&
+                '还没有好友，添加好友后就可以聊天了'}
+              {listStatus === 'ready' && friends.length > 0 && '从左侧选择一个聊天开始'}
+            </div>
+          )}
+        </div>
+
+        {profileOpen && (
+          <ProfilePage
+            online={connectionState.tone === 'online'}
+            onBack={() => setProfileOpen(false)}
+            onToast={showToast}
+            onAvatarChanged={setSelfAvatarUrl}
+          />
+        )}
+
+        {!profileOpen && profileFriend && (
+          <ProfilePage
+            key={profileFriend.id}
+            friend={profileFriend}
+            online={onlineFriendIds.has(profileFriend.id)}
+            onBack={() => setProfileFriend(null)}
+            onToast={showToast}
+            onSendMessage={(friend) => {
+              setProfileFriend(null)
+              openConversationFromContacts(friend.id)
+            }}
+            onDeleteFriend={(friend) => requestDeleteFriend(friend.id)}
+            onRemarkChanged={(friendId, remark) => {
+              setFriends((list) =>
+                list.map((item) => (item.id === friendId ? { ...item, remark } : item))
+              )
+              setProfileFriend((current) =>
+                current && current.id === friendId ? { ...current, remark } : current
+              )
+            }}
+            onRelationLost={() => {
+              setProfileFriend(null)
+              void loadFriends()
+            }}
+          />
         )}
       </main>
 
@@ -3884,7 +4413,8 @@ function ChatScreen(): React.JSX.Element {
               删除好友
             </p>
             <p className="friend-dialog-text">
-              确定删除“{getDisplayName(pendingDeleteFriend)}”吗？删除后聊天记录仍保留在本机。
+              确定删除“{getDisplayName(pendingDeleteFriend)}
+              ”吗？将同时清除双方的聊天记录，删除后无法恢复。
             </p>
             {deleteError && <p className="friend-delete-error">{deleteError}</p>}
             <div className="friend-dialog-actions">
@@ -3906,6 +4436,26 @@ function ChatScreen(): React.JSX.Element {
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* 修改密码：从左侧底部账户菜单打开，不跳转页面 */}
+      {passwordOpen && (
+        <ChangePasswordDialog
+          requestWithAuth={requestWithAuth}
+          getRefreshToken={getRefreshToken}
+          onClose={() => setPasswordOpen(false)}
+          onSuccess={() => {
+            setPasswordOpen(false)
+            showToast('密码修改成功')
+          }}
+        />
+      )}
+
+      {/* 轻量 Toast：不拦截操作，约 1 秒后自动消失 */}
+      {toast && (
+        <div className="app-toast" role="status" aria-live="polite">
+          {toast}
         </div>
       )}
     </div>

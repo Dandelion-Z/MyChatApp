@@ -51,12 +51,19 @@ function buildCsp(isDev: boolean, apiBaseUrl: string | null): string {
 
   const scriptSrc = isDev ? "script-src 'self' 'unsafe-inline'" : "script-src 'self'"
 
+  // 头像等图片由后端静态资源提供，img-src 需要放行实际 API 来源
+  const imgSrc = new Set<string>(["'self'", 'data:'])
+
+  if (apiBaseUrl) {
+    imgSrc.add(apiBaseUrl)
+  }
+
   return [
     "default-src 'self'",
     scriptSrc,
     // React 通过 style 属性写内联样式，需要保留 unsafe-inline
     "style-src 'self' 'unsafe-inline'",
-    "img-src 'self' data:",
+    `img-src ${[...imgSrc].join(' ')}`,
     "font-src 'self'",
     `connect-src ${[...connectSrc].join(' ')}`
   ].join('; ')

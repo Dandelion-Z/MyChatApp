@@ -1,5 +1,5 @@
 import type { Request, Response } from 'express'
-import { validateFriendUsername } from './friendController'
+import { validateFriendUid } from './friendController'
 import {
   CannotAddSelfError,
   DuplicateFriendshipError,
@@ -66,7 +66,7 @@ export async function sendFriendRequest(request: Request, response: Response): P
     return
   }
 
-  const validation = validateFriendUsername(request.body)
+  const validation = validateFriendUid(request.body)
 
   if (!validation.ok) {
     response.status(400).json({ success: false, error: validation.message })

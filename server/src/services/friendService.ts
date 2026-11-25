@@ -3,19 +3,22 @@ import { lockUserPair } from './userPairLock'
 
 export type FriendUser = {
   id: string
-  username: string
   nickname: string
+  avatarUrl: string | null
 }
 
 export type FriendListItem = {
   id: string
-  username: string
   nickname: string
   createdAt: string
   /** 当前用户是否把该好友标为星标；只反映自己这一侧的关系记录 */
   isStarred: boolean
   /** 星标标记时间；未星标时为 null */
   starredAt: string | null
+  /** 当前用户自己给该好友设置的备注；未设置为 null */
+  remark: string | null
+  /** 好友自定义头像地址；未设置时为 null */
+  avatarUrl: string | null
 }
 
 export type FriendStarState = {
@@ -63,14 +66,14 @@ function isUniqueViolation(error: unknown): boolean {
 
 export async function createFriendship(
   currentUserId: string,
-  targetUsername: string
+  targetUid: string
 ): Promise<FriendUser> {
-  // 查找目标用户（排除已注销用户）
+  // 查找目标用户（排除已注销用户）：只按公开 UID 精确匹配，不再接受登录用户名
   const targetResult = await pool.query(
-    `SELECT id, username, nickname
+    `SELECT id, nickname, avatar_url
      FROM users
-     WHERE username = $1 AND is_deleted = FALSE`,
-    [targetUsername]
+     WHERE uid = $1 AND is_deleted = FALSE`,
+    [targetUid]
   )
 
   const target = targetResult.rows[0]
@@ -127,15 +130,19 @@ export async function createFriendship(
 
   return {
     id: targetId,
-    username: String(target.username),
-    nickname: String(target.nickname)
+    nickname: String(target.nickname),
+    avatarUrl:
+      target.avatar_url === null || target.avatar_url === undefined
+        ? null
+        : String(target.avatar_url)
   }
 }
 
 export async function getFriends(currentUserId: string): Promise<FriendListItem[]> {
   // 参数化查询：当前用户 ID 只来自 JWT；JOIN 用户表并过滤软删除用户
+  // 公开信息只包含昵称，不返回登录用户名；备注只返回当前用户自己设置的一侧
   const result = await pool.query(
-    `SELECT u.id, u.username, u.nickname, f.created_at, f.is_starred, f.starred_at
+    `SELECT u.id, u.nickname, u.avatar_url, f.created_at, f.is_starred, f.starred_at, f.remark
      FROM friendships f
      JOIN users u ON u.id = f.friend_id
      WHERE f.user_id = $1 AND u.is_deleted = FALSE
@@ -146,11 +153,13 @@ export async function getFriends(currentUserId: string): Promise<FriendListItem[
   // BIGINT 的 id 保持字符串，created_at 转为 ISO 字符串的 createdAt
   return result.rows.map((row) => ({
     id: String(row.id),
-    username: String(row.username),
     nickname: String(row.nickname),
     createdAt: new Date(row.created_at).toISOString(),
     isStarred: row.is_starred === true,
-    starredAt: row.starred_at ? new Date(row.starred_at).toISOString() : null
+    starredAt: row.starred_at ? new Date(row.starred_at).toISOString() : null,
+    remark: row.remark === null || row.remark === undefined ? null : String(row.remark),
+    avatarUrl:
+      row.avatar_url === null || row.avatar_url === undefined ? null : String(row.avatar_url)
   }))
 }
 

@@ -8,6 +8,8 @@ import { authRouter } from './routes/authRoutes'
 import { conversationRouter } from './routes/conversationRoutes'
 import { friendRouter } from './routes/friendRoutes'
 import { messageRouter } from './routes/messageRoutes'
+import { profileRouter } from './routes/profileRoutes'
+import { AVATAR_DIR } from './services/avatarService'
 import { deleteExpiredMessages } from './services/messageService'
 import { registerSocketHandlers } from './socket'
 
@@ -90,6 +92,19 @@ app.use(
 
 app.use(express.json())
 
+// 头像静态资源：文件名由服务端生成（随机 UUID），不做目录列表，可长期缓存。
+// 头像本身不是私密内容，<img> 标签无法携带 Authorization，因此不额外做鉴权。
+app.use(
+  '/uploads/avatars',
+  express.static(AVATAR_DIR, {
+    index: false,
+    dotfiles: 'deny',
+    maxAge: '365d',
+    immutable: true,
+    fallthrough: true
+  })
+)
+
 // 健康检查接口：只用于确认服务存活，不涉及数据库
 app.get('/health', (_request, response) => {
   response.json({ status: 'ok' })
@@ -98,6 +113,7 @@ app.get('/health', (_request, response) => {
 app.use('/api/auth', authRouter)
 app.use('/api/friends', friendRouter)
 app.use('/api/conversations', conversationRouter)
+app.use('/api/profile', profileRouter)
 app.use('/api/messages', messageRouter)
 
 // Express 应用挂到 Node 原生 HTTP Server 上

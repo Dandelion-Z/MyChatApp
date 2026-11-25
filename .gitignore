@@ -7,3 +7,6 @@ out
 .env
 .env.*
 !.env.example
+
+# 用户上传的头像文件（运行时数据，不入库）
+server/uploads

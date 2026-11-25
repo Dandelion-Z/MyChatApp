@@ -2,13 +2,16 @@ import type { RequestOptions } from './client'
 
 export type Friend = {
   id: string
-  username: string
   nickname: string
   createdAt: string
   /** 当前用户是否星标了该好友（只影响自己这一侧的关系记录） */
   isStarred: boolean
   /** 星标标记时间；未星标时为 null */
   starredAt: string | null
+  /** 当前用户自己给该好友设置的备注；未设置为 null */
+  remark: string | null
+  /** 好友自定义头像地址；未设置时为 null，前端回退默认头像 */
+  avatarUrl: string | null
 }
 
 export type FriendsResponse = {
@@ -18,8 +21,8 @@ export type FriendsResponse = {
 
 export type AddedFriend = {
   id: string
-  username: string
   nickname: string
+  avatarUrl: string | null
 }
 
 export type AddFriendResponse = {
@@ -47,13 +50,11 @@ export async function getFriends(
   return response.friends
 }
 
-export async function addFriend(
-  requestWithAuth: AuthedRequest,
-  username: string
-): Promise<AddedFriend> {
+/** 直接建立好友关系（旧接口，仍按 UID 查找；正常添加流程走 sendFriendRequest） */
+export async function addFriend(requestWithAuth: AuthedRequest, uid: string): Promise<AddedFriend> {
   const response = await requestWithAuth<AddFriendResponse>('/api/friends', {
     method: 'POST',
-    body: { username }
+    body: { uid }
   })
 
   return response.data
@@ -138,14 +139,14 @@ export async function getFriendRequests(
   return response
 }
 
-/** 发送好友申请（不直接建立好友关系） */
+/** 发送好友申请（不直接建立好友关系）；按对方公开 UID 查找 */
 export async function sendFriendRequest(
   requestWithAuth: AuthedRequest,
-  username: string
+  uid: string
 ): Promise<FriendRequestItem> {
   const response = await requestWithAuth<FriendRequestResponse>('/api/friends/requests', {
     method: 'POST',
-    body: { username }
+    body: { uid }
   })
 
   return response.data

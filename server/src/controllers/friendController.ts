@@ -10,7 +10,7 @@ import {
   setFriendStarred
 } from '../services/friendService'
 
-const USERNAME_PATTERN = /^[a-z0-9_]+$/
+const UID_PATTERN = /^(?:[1-9]\d{4,18})$/
 const FRIEND_ID_PATTERN = /^[1-9]\d*$/
 const MAX_BIGINT = 9223372036854775807n
 
@@ -20,28 +20,25 @@ function fail(message: string): ValidationResult {
   return { ok: false, message }
 }
 
-export function validateFriendUsername(body: unknown): ValidationResult {
+/** 好友查找/添加只接受服务端分配的 UID（5 至 19 位纯数字、不以 0 开头），不再接受登录用户名 */
+export function validateFriendUid(body: unknown): ValidationResult {
   if (typeof body !== 'object' || body === null || Array.isArray(body)) {
     return fail('请求体必须是 JSON 对象')
   }
 
-  const { username } = body as Record<string, unknown>
+  const { uid } = body as Record<string, unknown>
 
-  if (typeof username !== 'string') {
-    return fail('username 必须是字符串')
+  if (typeof uid !== 'string') {
+    return fail('UID 必须是字符串')
   }
 
-  const normalizedUsername = username.trim().toLowerCase()
+  const normalizedUid = uid.trim()
 
-  if (normalizedUsername.length < 3 || normalizedUsername.length > 20) {
-    return fail('username 长度必须为 3～20 个字符')
+  if (!UID_PATTERN.test(normalizedUid)) {
+    return fail('UID 格式不正确，应为 5 至 19 位数字且不能以 0 开头')
   }
 
-  if (!USERNAME_PATTERN.test(normalizedUsername)) {
-    return fail('username 只能包含英文字母、数字和下划线')
-  }
-
-  return { ok: true, value: normalizedUsername }
+  return { ok: true, value: normalizedUid }
 }
 
 export async function addFriend(request: Request, response: Response): Promise<void> {
@@ -53,7 +50,7 @@ export async function addFriend(request: Request, response: Response): Promise<v
     return
   }
 
-  const validation = validateFriendUsername(request.body)
+  const validation = validateFriendUid(request.body)
 
   if (!validation.ok) {
     response.status(400).json({ success: false, error: validation.message })

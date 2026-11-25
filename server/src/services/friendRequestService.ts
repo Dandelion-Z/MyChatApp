@@ -108,12 +108,17 @@ type RequestRow = {
   created_at: unknown
   handled_at: unknown
   peer_id: unknown
-  username: unknown
   nickname: unknown
+  avatar_url: unknown
 }
 
 function toIso(value: unknown): string {
   return new Date(value as string).toISOString()
+}
+
+/** 头像地址统一映射为字符串或 null，避免把 pg 的 null 语义泄漏到接口层 */
+function avatarUrlOf(value: unknown): string | null {
+  return value === null || value === undefined ? null : String(value)
 }
 
 /** 数据库行 → 接口结构；方向以当前用户是接收方还是发送方判定 */
@@ -124,8 +129,8 @@ function mapRequestRow(row: RequestRow, currentUserId: string): FriendRequestIte
     status: String(row.status) as FriendRequestStatus,
     user: {
       id: String(row.peer_id),
-      username: String(row.username),
-      nickname: String(row.nickname)
+      nickname: String(row.nickname),
+      avatarUrl: avatarUrlOf(row.avatar_url)
     },
     createdAt: toIso(row.created_at),
     handledAt: row.handled_at ? toIso(row.handled_at) : null
@@ -134,7 +139,7 @@ function mapRequestRow(row: RequestRow, currentUserId: string): FriendRequestIte
 
 const REQUEST_SELECT_SQL = `
   SELECT r.id, r.sender_id, r.receiver_id, r.status, r.created_at, r.handled_at,
-         u.id AS peer_id, u.username, u.nickname
+         u.id AS peer_id, u.nickname, u.avatar_url
   FROM friend_requests r
   JOIN users u
     ON u.id = CASE WHEN r.sender_id = $2 THEN r.receiver_id ELSE r.sender_id END
@@ -146,13 +151,14 @@ const REQUEST_SELECT_SQL = `
  */
 export async function createFriendRequest(
   currentUserId: string,
-  targetUsername: string
+  targetUid: string
 ): Promise<FriendRequestItem> {
+  // 只按公开 UID 精确查找，不再支持按登录用户名添加好友
   const targetResult = await pool.query(
-    `SELECT id, username, nickname
+    `SELECT id, nickname, avatar_url
      FROM users
-     WHERE username = $1 AND is_deleted = FALSE`,
-    [targetUsername]
+     WHERE uid = $1 AND is_deleted = FALSE`,
+    [targetUid]
   )
 
   const target = targetResult.rows[0]
@@ -220,8 +226,8 @@ export async function createFriendRequest(
       status: String(row.status) as FriendRequestStatus,
       user: {
         id: targetId,
-        username: String(target.username),
-        nickname: String(target.nickname)
+        nickname: String(target.nickname),
+        avatarUrl: avatarUrlOf(target.avatar_url)
       },
       createdAt: toIso(row.created_at),
       handledAt: row.handled_at ? toIso(row.handled_at) : null

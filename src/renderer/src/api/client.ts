@@ -5,6 +5,8 @@ export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
 export type RequestOptions = {
   method?: HttpMethod
   body?: unknown
+  /** 已序列化的请求体（例如 FormData）：设置后忽略 body，也不再添加 JSON Content-Type */
+  rawBody?: BodyInit
   headers?: Record<string, string>
   /** 预留的 Bearer Token 注入点；Token 的存储与刷新由后续认证模块负责 */
   token?: string | null
@@ -64,7 +66,7 @@ async function parseResponseBody(response: Response): Promise<unknown> {
  * 由调用方通过泛型 T 指定具体响应类型。
  */
 export async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
-  const { method = 'GET', body, headers, token, signal } = options
+  const { method = 'GET', body, rawBody, headers, token, signal } = options
 
   const url =
     path.startsWith('http://') || path.startsWith('https://')
@@ -72,7 +74,7 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
       : `${API_BASE_URL}${path.startsWith('/') ? path : `/${path}`}`
 
   const requestHeaders: Record<string, string> = {
-    'Content-Type': 'application/json',
+    ...(rawBody ? {} : { 'Content-Type': 'application/json' }),
     ...headers
   }
 
@@ -86,7 +88,7 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
     response = await fetch(url, {
       method,
       headers: requestHeaders,
-      body: body === undefined ? undefined : JSON.stringify(body),
+      body: rawBody ?? (body === undefined ? undefined : JSON.stringify(body)),
       signal
     })
   } catch (error) {
@@ -102,4 +104,20 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
   }
 
   return payload as T
+}
+
+/**
+ * 把服务端返回的相对资源路径（如头像 /uploads/avatars/x.webp）解析成完整地址。
+ * 已经是 http(s) 绝对地址时原样返回。
+ */
+export function resolveApiUrl(path: string | null | undefined): string | null {
+  if (!path) {
+    return null
+  }
+
+  if (/^https?:\/\//i.test(path)) {
+    return path
+  }
+
+  return `${API_BASE_URL}${path.startsWith('/') ? path : `/${path}`}`
 }

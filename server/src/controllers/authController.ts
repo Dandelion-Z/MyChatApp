@@ -13,6 +13,8 @@ import {
   revokeRefreshToken,
   rotateRefreshToken
 } from '../services/tokenService'
+import { normalizeNickname } from '../utils/text'
+import { isValidPasswordFormat } from '../services/passwordPolicy'
 
 const USERNAME_PATTERN = /^[a-z0-9_]+$/
 
@@ -47,7 +49,7 @@ export function validateRegisterInput(body: unknown): ValidationResult<RegisterI
     return fail('password 必须是字符串')
   }
 
-  if (password.length < 8 || password.length > 128) {
+  if (!isValidPasswordFormat(password)) {
     return fail('password 长度必须为 8～128 个字符')
   }
 
@@ -55,10 +57,10 @@ export function validateRegisterInput(body: unknown): ValidationResult<RegisterI
     return fail('nickname 必须是字符串')
   }
 
-  const normalizedNickname = nickname.trim()
+  const nicknameResult = normalizeNickname(nickname)
 
-  if (normalizedNickname.length < 1 || normalizedNickname.length > 50) {
-    return fail('nickname 长度必须为 1～50 个字符')
+  if (!nicknameResult.ok) {
+    return fail(nicknameResult.message)
   }
 
   return {
@@ -66,7 +68,7 @@ export function validateRegisterInput(body: unknown): ValidationResult<RegisterI
     value: {
       username: normalizedUsername,
       password,
-      nickname: normalizedNickname
+      nickname: nicknameResult.value
     }
   }
 }
@@ -100,7 +102,7 @@ export function validateLoginInput(body: unknown): ValidationResult<LoginInput> 
     return fail('password 必须是字符串')
   }
 
-  if (password.length < 8 || password.length > 128) {
+  if (!isValidPasswordFormat(password)) {
     return fail('password 长度必须为 8～128 个字符')
   }
 

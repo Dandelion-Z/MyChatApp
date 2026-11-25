@@ -1,6 +1,9 @@
+import { createHash } from 'node:crypto'
 import { argon2id, hash, verify } from 'argon2'
 import { pool } from '../database/pool'
 import { ACCESS_TOKEN_TTL_SECONDS, JwtConfigError, getJwtSecret, signAccessToken } from './jwt'
+import { recordDailyLoginActivity } from './activityService'
+import { isValidPasswordFormat } from './passwordPolicy'
 import { issueRefreshToken } from './tokenService'
 
 export { JwtConfigError, getJwtSecret }
@@ -55,6 +58,31 @@ export class InvalidCredentialsError extends Error {
   }
 }
 
+export class InvalidCurrentPasswordError extends Error {
+  constructor() {
+    super('原密码错误')
+    this.name = 'InvalidCurrentPasswordError'
+  }
+}
+
+export class InvalidNewPasswordError extends Error {
+  constructor() {
+    super('新密码长度必须为 8～128 个字符')
+    this.name = 'InvalidNewPasswordError'
+  }
+}
+
+export class PasswordUnchangedError extends Error {
+  constructor() {
+    super('新密码不能与原密码相同')
+    this.name = 'PasswordUnchangedError'
+  }
+}
+
+export function hashRefreshTokenForComparison(token: string): string {
+  return createHash('sha256').update(token, 'utf8').digest('hex')
+}
+
 function isUniqueViolation(error: unknown): boolean {
   return (
     typeof error === 'object' &&
@@ -69,6 +97,7 @@ export async function registerUser(input: RegisterInput): Promise<RegisteredUser
   const passwordHash = await hash(input.password, { type: argon2id })
 
   try {
+    // uid 不在 INSERT 列中：由 users_uid_seq 的 nextval() 连续递增分配
     const result = await pool.query(
       `INSERT INTO users (username, password_hash, nickname)
        VALUES ($1, $2, $3)
@@ -85,7 +114,7 @@ export async function registerUser(input: RegisterInput): Promise<RegisteredUser
       createdAt: new Date(row.created_at).toISOString()
     }
   } catch (error) {
-    // 并发注册由数据库唯一约束兜底：23505 表示用户名冲突
+    // 序列分配不会产生 UID 冲突，唯一冲突只可能来自用户名
     if (isUniqueViolation(error)) {
       throw new DuplicateUsernameError()
     }
@@ -123,6 +152,9 @@ export async function loginUser(input: LoginInput): Promise<LoginResult> {
     throw new InvalidCredentialsError()
   }
 
+  // 每日活跃积分：密码认证通过后按 UTC 自然日累加，同日重复登录不重复加分
+  await recordDailyLoginActivity(String(row.id))
+
   // 调用时校验密钥，缺失或强度不足会抛 JwtConfigError，绝不使用弱密钥签发
   getJwtSecret()
 
@@ -144,5 +176,86 @@ export async function loginUser(input: LoginInput): Promise<LoginResult> {
       username,
       nickname: String(row.nickname)
     }
+  }
+}
+
+/**
+ * 已登录用户修改密码。
+ * 只信任认证中间件给出的 userId；先校验原密码，再校验新密码规则与是否与原密码相同。
+ * 成功后撤销其他设备的 Refresh Token（当前设备的 token 按哈希保留），
+ * 使旧凭证不会继续长期有效，同时避免当前设备被登出。
+ */
+export async function changePassword(
+  userId: string,
+  currentPassword: string,
+  newPassword: string,
+  currentRefreshToken?: string | null
+): Promise<void> {
+  const result = await pool.query(
+    `SELECT password_hash FROM users WHERE id = $1 AND is_deleted = FALSE`,
+    [userId]
+  )
+
+  const row = result.rows[0]
+
+  if (!row) {
+    throw new InvalidCurrentPasswordError()
+  }
+
+  let passwordMatches: boolean
+
+  try {
+    passwordMatches = await verify(String(row.password_hash), currentPassword)
+  } catch {
+    passwordMatches = false
+  }
+
+  if (!passwordMatches) {
+    throw new InvalidCurrentPasswordError()
+  }
+
+  if (!isValidPasswordFormat(newPassword)) {
+    throw new InvalidNewPasswordError()
+  }
+
+  if (newPassword === currentPassword) {
+    throw new PasswordUnchangedError()
+  }
+
+  const passwordHash = await hash(newPassword, { type: argon2id })
+  const keepTokenHash =
+    typeof currentRefreshToken === 'string' && currentRefreshToken.length > 0
+      ? hashRefreshTokenForComparison(currentRefreshToken)
+      : null
+
+  const client = await pool.connect()
+
+  try {
+    await client.query('BEGIN')
+    await client.query(`UPDATE users SET password_hash = $2 WHERE id = $1`, [userId, passwordHash])
+
+    if (keepTokenHash) {
+      // 除当前设备外的所有有效 Refresh Token 全部撤销
+      await client.query(
+        `UPDATE refresh_tokens
+         SET revoked_at = CURRENT_TIMESTAMP
+         WHERE user_id = $1 AND revoked_at IS NULL AND token_hash <> $2`,
+        [userId, keepTokenHash]
+      )
+    } else {
+      await client.query(
+        `UPDATE refresh_tokens
+         SET revoked_at = CURRENT_TIMESTAMP
+         WHERE user_id = $1 AND revoked_at IS NULL`,
+        [userId]
+      )
+    }
+
+    await client.query('COMMIT')
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {})
+    throw error
+  } finally {
+    client.release()
   }
 }

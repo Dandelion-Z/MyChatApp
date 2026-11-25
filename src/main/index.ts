@@ -13,6 +13,7 @@ import { join, normalize, sep } from 'path'
 import { pathToFileURL } from 'url'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
+import windowsIcon from '../../resources/icon.ico?asset'
 import { registerAuthStorage } from './authStorage'
 import { registerLocalMessageStore } from './localMessageStore'
 import { registerUpdater } from './updater'
@@ -132,7 +133,10 @@ function createWindow(): BrowserWindow {
             color: TITLE_BAR_COLOR,
             symbolColor: '#1d1d1f',
             height: TITLE_BAR_HEIGHT
-          }
+          },
+          // Windows 下不传 icon 时会回退到 electron.exe 自带的 Electron 图标，
+          // 这里显式使用项目图标，保证开发版任务栏/Alt+Tab 也是永夜图标。
+          icon: windowsIcon
         }
       : {}),
     ...(process.platform === 'linux' ? { icon } : {}),
@@ -231,8 +235,9 @@ function createTray(): void {
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
 app.whenReady().then(() => {
-  // Set app user model id for windows
-  electronApp.setAppUserModelId('com.electron')
+  // Set app user model id for windows，必须与 electron-builder.yml 的 appId 一致，
+  // 否则固定到任务栏/通知的图标可能回退到 Electron 默认图标
+  electronApp.setAppUserModelId('com.electron.app')
 
   // Default open or close DevTools by F12 in development
   // and ignore CommandOrControl + R in production.
