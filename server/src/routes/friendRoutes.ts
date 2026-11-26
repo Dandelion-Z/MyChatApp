@@ -1,10 +1,5 @@
 import { Router } from 'express'
-import {
-  addFriend,
-  listFriends,
-  removeFriend,
-  updateFriendStar
-} from '../controllers/friendController'
+import { listFriends, removeFriend, updateFriendStar } from '../controllers/friendController'
 import {
   acceptFriendRequestHandler,
   listFriendRequests,
@@ -16,8 +11,8 @@ import { requireAuth } from '../middleware/authMiddleware'
 
 export const friendRouter = Router()
 
-// 所有好友相关接口都需要 JWT 身份认证
-friendRouter.post('/', requireAuth, addFriend)
+// 所有好友相关接口都需要 JWT 身份认证。
+// 注意：不存在“按 UID 直接建立好友关系”的接口，新增好友必须走好友申请并获对方同意。
 friendRouter.get('/', requireAuth, listFriends)
 friendRouter.delete('/:friendId', requireAuth, removeFriend)
 // 星标作用于当前用户自己的好友关系记录（PUT 表示整体设置，幂等）

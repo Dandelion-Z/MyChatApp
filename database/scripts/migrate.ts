@@ -8,8 +8,8 @@ const MIGRATIONS_DIR = join(__dirname, '..', 'migrations')
 // 迁移文件命名规则：0001_xxx.sql（至少 4 位数字 + 下划线 + 小写字母/数字/下划线）
 const MIGRATION_FILE_PATTERN = /^\d{4,}_[a-z0-9_]+\.sql$/
 
-// 第一版只允许把这个初始迁移登记为基线
-const BASELINE_VERSION = '0001_initial_schema.sql'
+// V1 基线：整合了开发阶段全部历史结构，之后的结构变更从 0002（V2）开始
+const BASELINE_VERSION = '0001_v1_baseline.sql'
 
 const CREATE_SCHEMA_MIGRATIONS_SQL = `
 CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -25,12 +25,16 @@ function printUsage(): void {
       '  tsx database/scripts/migrate.ts migrate',
       '      执行 database/migrations 下所有尚未执行的迁移',
       '',
-      '  tsx database/scripts/migrate.ts baseline 0001_initial_schema.sql',
-      '      仅把 0001 登记为已执行（不执行 SQL、不校验结构）',
+      '  tsx database/scripts/migrate.ts baseline 0001_v1_baseline.sql',
+      '      仅把 V1 基线登记为已执行（不执行 SQL、不校验结构）',
+      '',
+      '数据库结构版本说明：',
+      '  0001_v1_baseline.sql = 数据库结构 V1（完整初始结构）',
+      '  后续结构变更从 0002_xxx.sql（V2）开始递增',
       '',
       '对应的 npm 脚本：',
       '  npm run db:migrate',
-      '  npm run db:baseline -- 0001_initial_schema.sql'
+      '  npm run db:baseline -- 0001_v1_baseline.sql'
     ].join('\n')
   )
 }
@@ -126,6 +130,18 @@ async function registerBaseline(client: Client, version: string): Promise<void> 
   }
 }
 
+async function pruneStaleVersions(client: Client, migrationFiles: string[]): Promise<void> {
+  // 历史版本文件已合并进 V1 基线，版本表中指向已删除文件的记录不再有意义
+  const result = await client.query(
+    'DELETE FROM schema_migrations WHERE NOT (version = ANY($1::text[]))',
+    [migrationFiles]
+  )
+
+  if ((result.rowCount ?? 0) > 0) {
+    console.log(`已清理 ${result.rowCount} 条已合并的历史版本记录。`)
+  }
+}
+
 async function runPendingMigrations(client: Client, migrationFiles: string[]): Promise<void> {
   const appliedVersions = await getAppliedVersions(client)
   const pending = migrationFiles.filter((file) => !appliedVersions.has(file))
@@ -170,7 +186,7 @@ async function main(): Promise<void> {
 
     if (!requestedVersion) {
       console.error('基线登记必须明确指定迁移文件名，例如：')
-      console.error('  npm run db:baseline -- 0001_initial_schema.sql')
+      console.error('  npm run db:baseline -- 0001_v1_baseline.sql')
       process.exitCode = 1
       return
     }
@@ -202,6 +218,7 @@ async function main(): Promise<void> {
     }
 
     await runPendingMigrations(client, migrationFiles)
+    await pruneStaleVersions(client, migrationFiles)
   } catch (error) {
     hasPrimaryError = true
     throw error

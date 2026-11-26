@@ -1,10 +1,6 @@
 import type { Request, Response } from 'express'
 import {
-  CannotAddSelfError,
-  DuplicateFriendshipError,
   FriendshipNotFoundError,
-  UserNotFoundError,
-  createFriendship,
   deleteFriendship,
   getFriends,
   setFriendStarred
@@ -39,46 +35,6 @@ export function validateFriendUid(body: unknown): ValidationResult {
   }
 
   return { ok: true, value: normalizedUid }
-}
-
-export async function addFriend(request: Request, response: Response): Promise<void> {
-  // 当前用户只能来自 JWT 中间件写入的 request.userId，绝不读取客户端提交的 user_id
-  const currentUserId = request.userId
-
-  if (!currentUserId) {
-    response.status(401).json({ success: false, error: '未授权' })
-    return
-  }
-
-  const validation = validateFriendUid(request.body)
-
-  if (!validation.ok) {
-    response.status(400).json({ success: false, error: validation.message })
-    return
-  }
-
-  try {
-    const friend = await createFriendship(currentUserId, validation.value)
-    response.status(201).json({ success: true, data: friend })
-  } catch (error) {
-    if (error instanceof UserNotFoundError) {
-      response.status(404).json({ success: false, error: '用户不存在' })
-      return
-    }
-
-    if (error instanceof CannotAddSelfError) {
-      response.status(400).json({ success: false, error: '不能添加自己为好友' })
-      return
-    }
-
-    if (error instanceof DuplicateFriendshipError) {
-      response.status(409).json({ success: false, error: '你们已经是好友' })
-      return
-    }
-
-    console.error('添加好友失败：', error instanceof Error ? error.message : String(error))
-    response.status(500).json({ success: false, error: '服务器内部错误' })
-  }
 }
 
 export async function listFriends(request: Request, response: Response): Promise<void> {

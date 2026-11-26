@@ -9,6 +9,7 @@ import {
   Menu,
   nativeImage
 } from 'electron'
+import { existsSync } from 'fs'
 import { join, normalize, sep } from 'path'
 import { pathToFileURL } from 'url'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
@@ -136,7 +137,7 @@ function createWindow(): BrowserWindow {
           },
           // Windows 下不传 icon 时会回退到 electron.exe 自带的 Electron 图标，
           // 这里显式使用项目图标，保证开发版任务栏/Alt+Tab 也是永夜图标。
-          icon: windowsIcon
+          icon: resolveAssetPath(windowsIcon)
         }
       : {}),
     ...(process.platform === 'linux' ? { icon } : {}),
@@ -201,6 +202,19 @@ function showMainWindow(): void {
 }
 
 /**
+ * electron-builder 的 asarUnpack 会把 resources/** 解包到 app.asar.unpacked，
+ * 而 nativeImage / BrowserWindow 通过原始路径读不到 asar 内的文件，
+ * 打包后必须显式指向解包目录，否则托盘与窗口图标加载失败。
+ */
+function resolveAssetPath(assetPath: string): string {
+  if (!app.isPackaged) {
+    return assetPath
+  }
+  const unpacked = assetPath.replace(`${sep}app.asar${sep}`, `${sep}app.asar.unpacked${sep}`)
+  return unpacked !== assetPath && existsSync(unpacked) ? unpacked : assetPath
+}
+
+/**
  * 系统托盘：单实例创建，图标复用打包资源。
  * 左键点击 / 双击恢复窗口，右键弹出菜单，只有「退出程序」会真正结束应用。
  */
@@ -209,9 +223,10 @@ function createTray(): void {
     return
   }
 
-  const trayIcon = nativeImage.createFromPath(icon)
+  const trayIconPath = resolveAssetPath(icon)
+  const trayIcon = nativeImage.createFromPath(trayIconPath)
 
-  tray = new Tray(trayIcon.isEmpty() ? icon : trayIcon.resize({ width: 16, height: 16 }))
+  tray = new Tray(trayIcon.isEmpty() ? trayIconPath : trayIcon.resize({ width: 16, height: 16 }))
   tray.setToolTip('永夜')
 
   const contextMenu = Menu.buildFromTemplate([

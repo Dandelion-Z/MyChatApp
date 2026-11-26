@@ -50,10 +50,12 @@ const MIN_CLEANUP_ROWS = 200
 const CLEANUP_HEADROOM_RATIO = 1.15
 const MAX_CLEANUP_ROUNDS = 5
 
-// 5 曾是「本地星标联系人」实验使用的版本号，该方案已废弃，星标改由服务端保存。
-// 这里保留 5 作为已使用的版本号，避免已升级到 5 的开发库发生版本回退；v5 不再创建或使用 contact_stars 表。
-// v6：chat_entries 增加置顶 / 免打扰 / 隐藏三列，供消息列表管理使用。
-const SCHEMA_VERSION = 6
+// 本地 SQLite 结构版本：V1 为整合后的完整初始结构（messages / sync_cursors / chat_entries）。
+// 之后的结构变更按 V2、V3……递增，与应用程序版本无关。
+// 开发阶段曾把 user_version 用到 6（含已废弃的本地星标实验）；低于等于 LEGACY_SCHEMA_VERSION_MAX
+// 的旧库在 open() 中按需补齐列后统一归一到 V1，数据全部保留。
+const SCHEMA_VERSION = 1
+const LEGACY_SCHEMA_VERSION_MAX = 6
 
 const USER_ID_PATTERN = /^[1-9]\d*$/
 const MESSAGE_ID_MAX_LENGTH = 64
@@ -495,8 +497,9 @@ function open(): DatabaseSync {
     connection.exec(ALTER_CHAT_FLAGS_SQL)
   }
 
-  if (version < SCHEMA_VERSION) {
-    // 软件升级时在这里按版本号做增量迁移，保证旧数据可继续使用
+  if (version !== SCHEMA_VERSION && version <= LEGACY_SCHEMA_VERSION_MAX) {
+    // 空库（0）与开发阶段旧版本号（2~6）统一归一到 V1；结构已在上方按需补齐，历史数据保留。
+    // 未来新增 V2 时，在这里按 version 分支执行对应迁移，再写入新版本号。
     connection.exec(`PRAGMA user_version = ${SCHEMA_VERSION}`)
   }
 

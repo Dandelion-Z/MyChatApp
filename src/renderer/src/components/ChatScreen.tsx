@@ -995,12 +995,35 @@ function ChatScreen(): React.JSX.Element {
           current = await openConversationOnServer(requestWithAuth, peerId)
         }
 
-        const updated = await updateConversationOnServer(
-          requestWithAuth,
-          peerId,
-          changes,
-          current.version
-        )
+        let updated
+        try {
+          updated = await updateConversationOnServer(
+            requestWithAuth,
+            peerId,
+            changes,
+            current.version
+          )
+        } catch (error) {
+          // 其他设备（或本机已读上报）会推进 version，导致一次 409。
+          // 这里拉取最新状态后用新版本重试一次，避免用户第一次点击开关就失败。
+          if (!(error instanceof ApiError) || error.status !== 409) {
+            throw error
+          }
+
+          const latest = await getConversations(requestWithAuth)
+          const latestEntry = latest.conversations.find((item) => item.peerId === peerId)
+
+          if (!latestEntry) {
+            throw error
+          }
+
+          updated = await updateConversationOnServer(
+            requestWithAuth,
+            peerId,
+            changes,
+            latestEntry.version
+          )
+        }
 
         if (!isMountedRef.current) {
           return true

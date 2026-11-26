@@ -1,0 +1,18 @@
+{
+  "alice": {
+    "id": "48",
+    "nickname": "QA 爱丽丝"
+  },
+  "bob": {
+    "id": "49",
+    "nickname": "QA 鲍勃"
+  },
+  "carol": {
+    "id": "50",
+    "nickname": "QA 卡罗尔"
+  },
+  "dave": {
+    "id": "51",
+    "nickname": "QA 戴夫"
+  }
+}

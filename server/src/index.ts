@@ -1,4 +1,5 @@
 import { createServer } from 'node:http'
+import { isIP } from 'node:net'
 import cors from 'cors'
 import dotenv from 'dotenv'
 import express from 'express'
@@ -32,6 +33,28 @@ function readPort(): number {
 }
 
 const PORT = readPort()
+
+// Node 默认只监听本机回环地址，由同机 Nginx 反代对外提供 HTTPS。
+// 生产部署保持默认 127.0.0.1；如确需其他地址（容器联调等），显式设置 HOST。
+function readHost(): string {
+  const rawHost = process.env.HOST?.trim()
+
+  if (!rawHost) {
+    return '127.0.0.1'
+  }
+
+  if (/\s|\//.test(rawHost)) {
+    throw new Error(`HOST 不是合法的主机地址：${rawHost}`)
+  }
+
+  if (rawHost === '0.0.0.0' || rawHost === '::') {
+    console.warn('警告：HOST 监听所有网络接口，业务端口会直接暴露；生产环境应使用 127.0.0.1。')
+  }
+
+  return rawHost
+}
+
+const HOST = readHost()
 
 // 允许的来源：开发环境 Vite 页面 + Electron 自定义协议页面。
 // 不包含通配符与 null，避免任意网页或 file:// 页面调用后端。
@@ -74,12 +97,69 @@ function readCorsOrigins(): string[] {
 
 const CORS_ORIGINS = readCorsOrigins()
 
+function isValidProxyEntry(entry: string): boolean {
+  const ipVersion = isIP(entry)
+
+  if (ipVersion !== 0) {
+    return true
+  }
+
+  const [address, prefix, ...rest] = entry.split('/')
+
+  if (rest.length > 0 || !address || !prefix) {
+    return false
+  }
+
+  const addressVersion = isIP(address)
+
+  if (addressVersion === 0 || !/^\d{1,3}$/.test(prefix)) {
+    return false
+  }
+
+  const maxPrefix = addressVersion === 6 ? 128 : 32
+  const prefixNumber = Number(prefix)
+
+  return prefixNumber >= 0 && prefixNumber <= maxPrefix
+}
+
+/**
+ * 可信反向代理地址。
+ *
+ * 默认 false：不信任任何转发头，限流使用 TCP 对端地址。
+ * 部署 SPA/Nginx 时通过 TRUST_PROXY 显式列出 Nginx 的地址（如 127.0.0.1），
+ * 不要使用 true 或固定跳数，否则客户端可以伪造 X-Forwarded-For 绕过限流。
+ */
+function readTrustProxy(): false | string[] {
+  const raw = process.env.TRUST_PROXY?.trim()
+
+  if (!raw) {
+    return false
+  }
+
+  const entries = raw
+    .split(',')
+    .map((entry) => entry.trim())
+    .filter(Boolean)
+
+  if (entries.length === 0) {
+    return false
+  }
+
+  for (const entry of entries) {
+    if (!isValidProxyEntry(entry)) {
+      throw new Error(`TRUST_PROXY 包含非法地址：${entry}`)
+    }
+  }
+
+  return entries
+}
+
+const TRUST_PROXY = readTrustProxy()
+
 const app = express()
 
-// 不信任任何代理转发头（X-Forwarded-For 等）：这些头可由客户端伪造。
-// 限流同样只使用 TCP 对端地址，避免伪造头绕过限流。
-// 将来部署在可信反向代理后面时，需要显式配置 trust proxy 并相应调整限流取址。
-app.set('trust proxy', false)
+// 必须在使用 req.ip 的中间件与路由注册之前设置。
+app.set('trust proxy', TRUST_PROXY)
 
 // REST API 的 CORS：只允许配置的来源，不使用通配符
 app.use(
@@ -195,10 +275,15 @@ async function start(): Promise<void> {
     return
   }
 
-  httpServer.listen(PORT, () => {
+  httpServer.listen(PORT, HOST, () => {
     console.log('MyChatApp 服务器已启动')
-    console.log(`  监听端口：${PORT}`)
-    console.log(`  健康检查：http://localhost:${PORT}/health`)
+    console.log(`  监听地址：http://${HOST}:${PORT}`)
+    console.log(
+      TRUST_PROXY === false
+        ? '  可信代理：未配置（TRUST_PROXY 为空，忽略 X-Forwarded-For）'
+        : `  可信代理：${TRUST_PROXY.join(', ')}`
+    )
+    console.log(`  健康检查：http://${HOST}:${PORT}/health`)
     console.log('  Socket.IO：已绑定到同一个 HTTP Server')
     console.log(`  CORS origins：${CORS_ORIGINS.join(', ')}`)
   })

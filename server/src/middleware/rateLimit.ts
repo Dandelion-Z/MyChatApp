@@ -34,14 +34,13 @@ function sweepExpired(now: number): void {
 }
 
 /**
- * 只使用 TCP 连接的对端地址，不读取 X-Forwarded-For。
- * 该头可以随便伪造，直接采信会让攻击者通过更换头绕过限流。
+ * 限流按客户端 IP 分桶。
  *
- * 因此本服务默认不信任任何代理；如果将来部署在反向代理后面，
- * 需要在受控环境中开启 trust proxy，并让限流改为读取 req.ip。
+ * 使用 req.ip：默认（trust proxy 未配置）时它等于 TCP 对端地址，X-Forwarded-For 被忽略；
+ * 只有当部署方通过 TRUST_PROXY 显式信任 Nginx 地址后，Express 才会采用代理转发的客户端 IP。
  */
 function clientKey(request: Request): string {
-  const address = request.socket.remoteAddress ?? 'unknown'
+  const address = request.ip ?? request.socket.remoteAddress ?? 'unknown'
 
   // IPv4-mapped IPv6 统一成 IPv4，避免同一来源被拆成两个桶
   return address.startsWith('::ffff:') ? address.slice('::ffff:'.length) : address

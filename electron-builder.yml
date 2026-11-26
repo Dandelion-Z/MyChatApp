@@ -3,6 +3,12 @@ productName: mychatapp
 directories:
   buildResources: build
 files:
+  # 显式白名单：只打包运行所需的构建产物、依赖与 package.json，
+  # 避免把 dist/、.qa/、screenshots/、tsbuildinfo 等开发产物带进安装包
+  - 'out/**/*'
+  - 'resources/**/*'
+  - 'package.json'
+  - 'node_modules/**/*'
   - '!**/.vscode/*'
   - '!src/*'
   - '!electron.vite.config.{js,ts,mjs,cjs}'
@@ -17,6 +23,12 @@ files:
   - '!docs/**'
   - '!**/.tmp-*/**'
   - '!.tmp-*'
+  - '!.qa/**'
+  - '!screenshots/**'
+  - '!dist/**'
+  - '!dist-*/**'
+  - '!**/*.tsbuildinfo'
+  - '!*.log'
 asarUnpack:
   - resources/**
 win:
