@@ -1,4 +1,4 @@
-# 永夜（MyChatApp）
+# 永夜（Polar Night）
 
 永夜是一个桌面端即时通讯应用：Electron + React 桌面客户端，Node.js/Express + Socket.IO 服务端，PostgreSQL 存储云端数据，客户端本地使用 SQLite 做消息缓存。
 

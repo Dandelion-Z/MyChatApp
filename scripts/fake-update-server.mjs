@@ -12,7 +12,7 @@
  * 环境变量：
  *   FAKE_UPDATE_PORT     监听端口，默认 3999
  *   FAKE_UPDATE_VERSION  返回给客户端的版本号，默认取 package.json 的 version
- *   FAKE_UPDATE_PATH     feed 路径前缀，默认 /mychatapp
+ *   FAKE_UPDATE_PATH     feed 路径前缀，默认 /polarnight
  *   FAKE_UPDATE_DIR      可选的静态文件目录（例如 dist）。
  *                        目录内若存在 latest.yml 则原样返回，并同时提供其中列出的
  *                        安装包/blockmap 下载；不存在则按 FAKE_UPDATE_VERSION 动态生成。
@@ -26,7 +26,7 @@ const repoRoot = resolve(fileURLToPath(new URL('..', import.meta.url)))
 const pkg = JSON.parse(readFileSync(join(repoRoot, 'package.json'), 'utf8'))
 
 const port = Number(process.env.FAKE_UPDATE_PORT ?? 3999)
-const feedPath = `/${(process.env.FAKE_UPDATE_PATH ?? '/mychatapp').replace(/^\/+|\/+$/g, '')}`
+const feedPath = `/${(process.env.FAKE_UPDATE_PATH ?? '/polarnight').replace(/^\/+|\/+$/g, '')}`
 const serveDir = process.env.FAKE_UPDATE_DIR ? resolve(process.env.FAKE_UPDATE_DIR) : null
 const configuredVersion = process.env.FAKE_UPDATE_VERSION ?? pkg.version
 

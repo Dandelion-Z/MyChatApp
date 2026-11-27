@@ -1,8 +1,9 @@
-# 永夜（MyChatApp）项目交接说明
+# 永夜（Polar Night）项目交接说明
 
 > 更新时间：2026-11-27
 > 适用版本：v1.0.1 源码（更新源已迁移为 GitHub Releases；v1.0.1 待构建发布）
-> 品牌：界面与窗口可见名称统一为「永夜」；内部项目名、包名、数据库名、API、IPC、环境变量仍为 MyChatApp/mychatapp，未改。
+> 品牌：界面与窗口可见名称统一为「永夜」；项目名 / 包名 / 可执行文件 / 安装包统一为 `polarnight`，Windows 应用身份 `appId = com.polarnight.app`。
+> 仍保留的历史标识（功能相关，未改）：自定义协议 `app://mychatapp`、数据库名 `mychatapp` / `mychatapp_test` / `mychatapp_qa`、v1.0.0 已发布产物名 `mychatapp-1.0.0-setup.exe`。
 > 本文档面向接手开发的新会话：只读本文即可了解现状并继续开发，不必回溯历史对话。
 
 ---
@@ -43,7 +44,7 @@
 ### 1.3 目录结构
 
 ```
-MyChatApp/
+polarnight/
 ├─ src/
 │  ├─ main/                     Electron 主进程
 │  │  ├─ index.ts               窗口（无边框+托盘+图标路径解析）、协议注册、生命周期
@@ -124,16 +125,16 @@ QA_DATABASE_URL='postgresql://mychatapp_user:<password>@127.0.0.1:5432/mychatapp
 环境变量：
 
 - 客户端构建期：`VITE_API_BASE_URL`（正式构建使用 `.env.production` 中的 `http://149.248.17.85:3000`；未配置时生产 CSP 只允许 `'self'`，登录会失败）。
-- 客户端运行期：`MYCHATAPP_UPDATE_URL` 仅用于本地自动更新测试，会强制改用 Generic 假更新服务器；正式版更新源由安装包内 `app-update.yml` 提供，不需要该变量，也不允许填 GitHub 地址。
+- 客户端运行期：`POLARNIGHT_UPDATE_URL` 仅用于本地自动更新测试，会强制改用 Generic 假更新服务器；正式版更新源由安装包内 `app-update.yml` 提供，不需要该变量，也不允许填 GitHub 地址。
 - `.env.production` 被 `.gitignore` 的 `.env.*` 规则忽略：新克隆仓库后需手动创建一行 `VITE_API_BASE_URL=http://149.248.17.85:3000`，或在构建命令中直接提供同名环境变量（命令行优先于该文件）。
 - 服务端：`PORT`、`HOST`（监听地址，默认 `127.0.0.1`，生产不要改成 `0.0.0.0`）、`DATABASE_URL`、`CORS_ORIGIN`（逗号分隔，拒绝 `*` 与 `null`）、`JWT_SECRET`（≥32 字节）、`ACCESS_TOKEN_TTL_SECONDS`（默认 900）、`MESSAGE_RETENTION_DAYS`（默认 30）、`AVATAR_DIR`（头像目录，生产需持久化）、`TRUST_PROXY`（可信反向代理地址，逗号分隔；默认不设置=不信任任何转发头）。
-- 本地库测试：`MYCHATAPP_LOCAL_STORAGE_QUOTA_MB` 可临时缩小 SQLite 容量。
+- 本地库测试：`POLARNIGHT_LOCAL_STORAGE_QUOTA_MB` 可临时缩小 SQLite 容量。
 
 本机启动注意事项：
 
 - DSH 会话 shell 默认 `ELECTRON_RUN_AS_NODE=1`，启动 Electron 必须 `env -u ELECTRON_RUN_AS_NODE`。
 - 直接从 DSH 的 bash 启动 Electron 可能崩溃（`0x80000003`），用 `explorer.exe <某个.cmd>` 启动可继承用户环境。
-- `dist/win-unpacked/mychatapp.exe` 在本仓库路径下会因本机环境（疑似安全软件）启动即崩；把整个目录复制到仓库外（如 `E:\mychatapp-run`）后运行正常。打包产物本身无问题。
+- `dist/win-unpacked/polarnight.exe` 在本仓库路径下会因本机环境（疑似安全软件）启动即崩；把整个目录复制到仓库外（如 `E:\polarnight-run`）后运行正常。打包产物本身无问题。
 
 ---
 
@@ -234,7 +235,7 @@ QA_DATABASE_URL='postgresql://mychatapp_user:<password>@127.0.0.1:5432/mychatapp
 - 三栏：左侧 64px 导航、中间列表（默认 280px，可拖动 220–420）、右侧聊天区自适应。
 - 主窗口：`titleBarStyle: 'hidden'` + `titleBarOverlay`（40px、`#F2F2F7`）；系统托盘用 `resources/icon.png`；关闭 = 隐藏到托盘；「退出登录」≠「退出程序」。
 - 会话设置：聊天头部齿轮打开覆盖式面板（272px，绝对定位覆盖，不挤压消息区），含「置顶聊天」「消息免打扰」开关；点击外部/Esc/切会话关闭。
-- 输入区：多行 textarea，可拖动上边框调高（44px 起，最大为聊天区一半，高度持久化到 `localStorage` 的 `mychatapp.composerHeight`）；Enter 发送、Shift+Enter 换行；Emoji 面板（48 项，插入光标处）；发送按钮固定右下。
+- 输入区：多行 textarea，可拖动上边框调高（44px 起，最大为聊天区一半，高度持久化到 `localStorage` 的 `polarnight.composerHeight`）；Enter 发送、Shift+Enter 换行；Emoji 面板（48 项，插入光标处）；发送按钮固定右下。
 - 联系人：右键菜单（发送消息/星标/删除好友）、整行双击开聊天、单击选中；顶部「新的朋友」入口与申请页；联系人列表不显示消息预览。
 - 未读与提醒：会话未读数字气泡、「新的朋友」申请数字气泡（与导航联系人角标同源 `pendingIncomingCount`）、导航消息未读总数；新消息且窗口不在前台时任务栏闪烁（免打扰会话不闪，离线补拉整批最多闪一次）。
 
@@ -243,7 +244,7 @@ QA_DATABASE_URL='postgresql://mychatapp_user:<password>@127.0.0.1:5432/mychatapp
 - `electron-builder.yml` 的 `files` 显式白名单：`out/**/*`、`package.json`、`node_modules/**/*`、`resources/**/*`；排除 `.qa/**`、`screenshots/**`、`dist/**`、`*.tsbuildinfo`、`*.log`。
 - `resources/**` 配置 `asarUnpack`，主进程用 `resolveAssetPath()` 把 `app.asar` 路径映射到 `app.asar.unpacked`（托盘/窗口图标）。
 - 图标：`build/icon.ico`（多尺寸 ≥256）用于 exe/安装包，`resources/icon.ico|png` 用于运行时；AUMID 与 `appId` 均为 `com.electron.app`。
-- 自动更新：`electron-updater`，启动门禁 fail-closed（检查失败不进入登录页）；正式更新源为 GitHub Releases（`electron-builder.yml` 的 `publish` → `provider: github` / `Dandelion-Z/Polar-Night` / `private: false`，公开仓库不需要客户端 Token），运行期由 `MYCHATAPP_UPDATE_URL` 切换到 Generic 假更新服务器（仅本地测试）。开发版（`app.isPackaged === false`）直接放行、不发任何更新请求。
+- 自动更新：`electron-updater`，启动门禁 fail-closed（检查失败不进入登录页）；正式更新源为 GitHub Releases（`electron-builder.yml` 的 `publish` → `provider: github` / `Dandelion-Z/Polar-Night` / `private: false`，公开仓库不需要客户端 Token），运行期由 `POLARNIGHT_UPDATE_URL` 切换到 Generic 假更新服务器（仅本地测试）。开发版（`app.isPackaged === false`）直接放行、不发任何更新请求。
 - 版本 1.0.0 的安装包内嵌更新源是 `http://127.0.0.1:13001`（早期联调地址，无法远程修改），因此 1.0.0 不能自动升级，必须人工覆盖安装 1.0.1；1.0.1 起走 GitHub Releases 全自动更新。
 
 ---
@@ -390,7 +391,7 @@ QA_DATABASE_URL='postgresql://mychatapp_user:<password>@127.0.0.1:5432/mychatapp
 18. 关闭主窗口只是隐藏，必须通过托盘「退出程序」结束进程。
 19. `refresh_tokens` 历史行不自动清理，只影响本地测试库。
 20. `resources/icon.icns` 仍是模板图标（仅 macOS 使用）。
-21. 打包 exe 在 `E:\MyChatApp\dist\win-unpacked` 路径下启动即崩（0x80000003，疑似本机安全软件），复制到仓库外运行正常；已排除 exe 与 asar 内容问题，确认为环境因素。
+21. 打包 exe 在 `E:\polarnight\dist\win-unpacked` 路径下启动即崩（0x80000003，疑似本机安全软件），复制到仓库外运行正常；已排除 exe 与 asar 内容问题，确认为环境因素。
 
 ---
 
@@ -485,6 +486,6 @@ QA_DATABASE_URL='postgresql://mychatapp_user:<password>@127.0.0.1:5432/mychatapp
 - 密码与数据管理规则见 `database/TEST_ACCOUNTS.md`（仅本地开发，不要用于正式环境）。
 - `db:seed-test-users` 只保证 Alice ↔ Bob；其他关系可能需手工补。
 - 当前 QA 使用独立库 `mychatapp_qa`，未改动 `mychatapp` 的业务数据；QA 账号不应带入生产。
-- 本机服务与端口在 QA 结束后已停止：3000、3999、9222–9232 无监听；无 `mychatapp.exe` 进程。
+- 本机服务与端口在 QA 结束后已停止：3000、3999、9222–9232 无监听；无 `polarnight.exe` 进程。
 - 工作区有大量未提交修改与未跟踪文件，接手先 `git status`，不要误删或回滚。
 - 当前判断：**具备进入 VPS 封闭测试的条件**（功能与数据链路已通过本地实际验证），前提是按第 9 节完成真实 HTTPS、更新源、签名与持久化上传目录配置。

@@ -1,9 +1,9 @@
 {
-  "name": "mychatapp",
+  "name": "polarnight",
   "version": "1.0.1",
-  "description": "An Electron application with React and TypeScript",
+  "description": "Polar Night desktop client",
   "main": "./out/main/index.js",
-  "author": "example.com",
+  "author": "Dandelion-Z",
   "homepage": "https://electron-vite.org",
   "scripts": {
     "format": "prettier --write .",

@@ -252,7 +252,7 @@ function createTray(): void {
 app.whenReady().then(() => {
   // Set app user model id for windows，必须与 electron-builder.yml 的 appId 一致，
   // 否则固定到任务栏/通知的图标可能回退到 Electron 默认图标
-  electronApp.setAppUserModelId('com.electron.app')
+  electronApp.setAppUserModelId('com.polarnight.app')
 
   // Default open or close DevTools by F12 in development
   // and ignore CommandOrControl + R in production.

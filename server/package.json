@@ -1,8 +1,8 @@
 {
-  "name": "mychatapp-server",
+  "name": "polarnight-server",
   "version": "0.1.0",
   "private": true,
-  "description": "MyChatApp backend server (Express + Socket.IO + PostgreSQL)",
+  "description": "Polar Night backend server (Express + Socket.IO + PostgreSQL)",
   "type": "commonjs",
   "main": "dist/index.js",
   "scripts": {

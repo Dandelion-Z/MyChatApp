@@ -24,7 +24,7 @@ function UpdateGate({ state, retrying, onRetry }: UpdateGateProps): React.JSX.El
   return (
     <div className="update-gate">
       <div className="update-card">
-        <div className="update-brand">MyChatApp</div>
+        <div className="update-brand">永夜</div>
         <p className={`update-message update-${state.phase}`} role="status">
           {state.message}
         </p>

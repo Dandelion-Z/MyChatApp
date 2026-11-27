@@ -8,9 +8,9 @@ import type { UpdaterState } from '../shared/updater'
 // 更新源有两类来源：
 //   1. 正式安装版：读取安装包内 resources/app-update.yml 写入的 publish 配置
 //      （当前为 GitHub Releases 公开仓库，客户端不需要任何 Token）；
-//   2. 本地测试：设置 MYCHATAPP_UPDATE_URL 时强制使用 Generic Provider 的假更新服务器，
+//   2. 本地测试：设置 POLARNIGHT_UPDATE_URL 时强制使用 Generic Provider 的假更新服务器，
 //      仅用于 scripts/test-packaged-update.mjs 一类离线验证。
-const UPDATE_URL_ENV = 'MYCHATAPP_UPDATE_URL'
+const UPDATE_URL_ENV = 'POLARNIGHT_UPDATE_URL'
 // 占位地址（保留 TLD，解析必然失败），用于提示部署方尚未配置真实更新源
 const PLACEHOLDER_HOST_SUFFIX = '.invalid'
 // GitHub Releases 页面/下载站域名：这些地址不是 Generic 更新源根地址，误填会导致 404
@@ -78,7 +78,7 @@ function isGitHubHost(hostname: string): boolean {
 }
 
 /**
- * MYCHATAPP_UPDATE_URL 只接受 Generic 假更新服务器的根地址。
+ * POLARNIGHT_UPDATE_URL 只接受 Generic 假更新服务器的根地址。
  * GitHub 正式更新源由安装包的 app-update.yml 提供，把 GitHub 页面地址填进该变量
  * 会被当成 Generic 根地址去请求 latest.yml，从而 404 卡死门禁，这里提前拦截。
  */
@@ -92,7 +92,7 @@ function assertGenericTestFeedUrl(raw: string, url: URL): void {
 
   if (/\.ya?ml$/i.test(url.pathname)) {
     throw new Error(
-      `${UPDATE_URL_ENV} 需要更新源根地址（例如 http://127.0.0.1:3999/mychatapp），` +
+      `${UPDATE_URL_ENV} 需要更新源根地址（例如 http://127.0.0.1:3999/polarnight），` +
         `而不是 latest.yml 文件地址：${raw}`
     )
   }

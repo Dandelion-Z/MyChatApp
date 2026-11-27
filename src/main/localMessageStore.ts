@@ -40,7 +40,7 @@ const DB_FILENAME = 'messages.db'
 
 // 所有账号共享 1 GB 额度；测试时可用环境变量覆盖（单位 MB）
 const DEFAULT_QUOTA_BYTES = 1024 * 1024 * 1024
-const QUOTA_ENV = 'MYCHATAPP_LOCAL_STORAGE_QUOTA_MB'
+const QUOTA_ENV = 'POLARNIGHT_LOCAL_STORAGE_QUOTA_MB'
 
 // 超过高水位后按创建时间从旧到新清理，直到回落到低水位
 const HIGH_WATER_RATIO = 0.9

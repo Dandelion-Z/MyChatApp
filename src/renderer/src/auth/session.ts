@@ -1,6 +1,6 @@
 import type { AuthUser } from '../api/auth'
 
-const STORAGE_KEY = 'mychatapp.auth'
+const STORAGE_KEY = 'polarnight.auth'
 
 export type Session = {
   accessToken: string

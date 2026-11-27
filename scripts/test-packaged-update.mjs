@@ -39,7 +39,12 @@ const smoke = hasFlag('--smoke')
 const keepProfile = hasFlag('--keep-profile')
 const port = Number(readOption('--port', '3999'))
 const apiBaseUrl = process.env.VITE_API_BASE_URL ?? 'http://localhost:3000'
-const defaultExe = join(repoRoot, 'dist', 'win-unpacked', isWindows ? 'mychatapp.exe' : 'mychatapp')
+const defaultExe = join(
+  repoRoot,
+  'dist',
+  'win-unpacked',
+  isWindows ? 'polarnight.exe' : 'polarnight'
+)
 const exePath = resolve(repoRoot, readOption('--exe', defaultExe))
 const profileDir = join(repoRoot, 'dist', '.update-test-profile')
 
@@ -143,7 +148,7 @@ async function main() {
     rmSync(profileDir, { recursive: true, force: true })
   }
 
-  log(`启动假更新服务器：http://127.0.0.1:${port}/mychatapp`)
+  log(`启动假更新服务器：http://127.0.0.1:${port}/polarnight`)
   fakeServer = spawn(process.execPath, [join(repoRoot, 'scripts', 'fake-update-server.mjs')], {
     cwd: repoRoot,
     env: { ...process.env, FAKE_UPDATE_PORT: String(port) },
@@ -165,7 +170,7 @@ async function main() {
   forward(fakeServer.stderr, '')
 
   const feedReady = await waitForUrl(
-    `http://127.0.0.1:${port}/mychatapp/latest.yml?noCache=${Date.now()}`
+    `http://127.0.0.1:${port}/polarnight/latest.yml?noCache=${Date.now()}`
   )
   if (!feedReady) throw new Error('假更新服务器启动失败')
   log('假更新服务器已就绪')
@@ -178,10 +183,10 @@ async function main() {
   }
 
   log(`启动应用：${exePath}`)
-  log(`  MYCHATAPP_UPDATE_URL=http://127.0.0.1:${port}/mychatapp`)
+  log(`  POLARNIGHT_UPDATE_URL=http://127.0.0.1:${port}/polarnight`)
   log(`  --user-data-dir=${profileDir}`)
 
-  const env = { ...process.env, MYCHATAPP_UPDATE_URL: `http://127.0.0.1:${port}/mychatapp` }
+  const env = { ...process.env, POLARNIGHT_UPDATE_URL: `http://127.0.0.1:${port}/polarnight` }
   // 本会话 shell 可能带有 ELECTRON_RUN_AS_NODE，会导致 exe 以 Node 模式运行
   delete env.ELECTRON_RUN_AS_NODE
 

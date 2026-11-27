@@ -1,11 +1,11 @@
-# MyChatApp 自动更新测试说明
+# Polar Night（永夜）自动更新测试说明
 
 本文档只回答「怎样测试自动更新」，不涉及发布流程之外的产品功能。三种模式必须区分清楚，否则最常见的现象就是**登录界面不出现**或**登录提示无法连接服务器**。
 
 | 模式             | 启动方式                                                         | `app.isPackaged` | 是否检查更新   | 需要更新源                            |
 | ---------------- | ---------------------------------------------------------------- | ---------------- | -------------- | ------------------------------------- |
 | 开发模式         | `npm run dev`                                                    | `false`          | 否（直接放行） | 不需要                                |
-| 打包测试模式     | `dist/win-unpacked/mychatapp.exe` + 假更新服务器 + 独立 userData | `true`           | 是             | 本地假更新服务器（Generic，环境变量） |
+| 打包测试模式     | `dist/win-unpacked/polarnight.exe` + 假更新服务器 + 独立 userData | `true`           | 是             | 本地假更新服务器（Generic，环境变量） |
 | 正式安装测试模式 | 安装包安装后的 exe                                               | `true`           | 是             | GitHub Releases（公开仓库，无 Token） |
 
 > 自动更新是 fail-closed 的：更新检查没通过就不会渲染登录页。这是需求要求的行为，**没有关闭开关**，也不要在测试里加。
@@ -17,11 +17,11 @@
 | 用途               | 来源                                                         | 配置位置                                          |
 | ------------------ | ------------------------------------------------------------ | ------------------------------------------------- |
 | 正式版更新         | GitHub Releases（`Dandelion-Z/Polar-Night`，公开仓库）        | `electron-builder.yml` 的 `publish` → 安装包内 `resources/app-update.yml` |
-| 本地更新测试       | 本地 Generic 假服务器（`scripts/fake-update-server.mjs`）     | 运行期环境变量 `MYCHATAPP_UPDATE_URL`             |
+| 本地更新测试       | 本地 Generic 假服务器（`scripts/fake-update-server.mjs`）     | 运行期环境变量 `POLARNIGHT_UPDATE_URL`             |
 | 本地开发版         | 不检查更新                                                   | `app.isPackaged === false` 时直接放行             |
 
 - 正式版**不需要**任何 GitHub Token：`publish.private: false`，客户端匿名访问 `github.com` 网页端点（`/releases/latest`、`/releases.atom`）与资产下载，不调用 `api.github.com`，不受匿名 API 配额限制。
-- `MYCHATAPP_UPDATE_URL` 只用于**本地测试**，且只能填 Generic 假服务器根地址（例如 `http://127.0.0.1:3999/mychatapp`）。填 GitHub 页面地址会被直接拒绝并给出提示，避免把正式更新源误当成 Generic 源。
+- `POLARNIGHT_UPDATE_URL` 只用于**本地测试**，且只能填 Generic 假服务器根地址（例如 `http://127.0.0.1:3999/polarnight`）。填 GitHub 页面地址会被直接拒绝并给出提示，避免把正式更新源误当成 Generic 源。
 - 正式版 API 地址：`http://149.248.17.85:3000`（写在 `.env.production`，仅生产构建生效）。
 
 ---
@@ -61,8 +61,8 @@ npm run test:packaged
 
 1. 以 `VITE_API_BASE_URL=http://localhost:3000` 执行 `npm run build`；
 2. 执行 `electron-builder --dir` 生成 `dist/win-unpacked`；
-3. 启动本地假更新服务器 `scripts/fake-update-server.mjs`（默认 `http://127.0.0.1:3999/mychatapp`，返回同版本 `latest.yml`）；
-4. 用独立 `--user-data-dir=dist/.update-test-profile` 启动 exe，并注入 `MYCHATAPP_UPDATE_URL`；
+3. 启动本地假更新服务器 `scripts/fake-update-server.mjs`（默认 `http://127.0.0.1:3999/polarnight`，返回同版本 `latest.yml`）；
+4. 用独立 `--user-data-dir=dist/.update-test-profile` 启动 exe，并注入 `POLARNIGHT_UPDATE_URL`；
 5. 应用退出后自动关闭假服务器并清理测试 userData。
 
 常用选项：
@@ -84,11 +84,11 @@ npx electron-builder --dir
 node scripts/fake-update-server.mjs
 
 # 3) 另开终端启动 exe（Windows PowerShell 示例）
-$env:MYCHATAPP_UPDATE_URL="http://127.0.0.1:3999/mychatapp"
-.\dist\win-unpacked\mychatapp.exe --user-data-dir=dist\.update-test-profile
+$env:POLARNIGHT_UPDATE_URL="http://127.0.0.1:3999/polarnight"
+.\dist\win-unpacked\polarnight.exe --user-data-dir=dist\.update-test-profile
 ```
 
-`MYCHATAPP_UPDATE_URL` 只在本次启动生效，不要写入系统环境变量或注册表。
+`POLARNIGHT_UPDATE_URL` 只在本次启动生效，不要写入系统环境变量或注册表。
 
 ### 2.4 假更新服务器的行为
 
@@ -99,7 +99,7 @@ $env:MYCHATAPP_UPDATE_URL="http://127.0.0.1:3999/mychatapp"
 - 环境变量：
   - `FAKE_UPDATE_PORT`：端口，默认 `3999`；
   - `FAKE_UPDATE_VERSION`：返回的版本号，默认当前版本；
-  - `FAKE_UPDATE_PATH`：feed 路径前缀，默认 `/mychatapp`；
+  - `FAKE_UPDATE_PATH`：feed 路径前缀，默认 `/polarnight`；
   - `FAKE_UPDATE_DIR`：可选静态目录。目录下有 `latest.yml` 时原样返回，并同时提供其中列出的安装包/blockmap 下载（用于本地完整更新流程）。
 - 支持 `GET`/`HEAD`，其他方法返回 405；未匹配路径返回 404，并在日志中打印请求行。
 
@@ -126,7 +126,7 @@ $env:MYCHATAPP_UPDATE_URL="http://127.0.0.1:3999/mychatapp"
 1. `electron-builder.yml` 的 `publish` 为 `provider: github` / `owner: Dandelion-Z` / `repo: Polar-Night` / `private: false` / `vPrefixedTagName: true`。
 2. 构建时使用正式 API 地址 `VITE_API_BASE_URL=http://149.248.17.85:3000`（已写入 `.env.production`，也可用命令行环境变量覆盖）。
 3. 新版本安装包的 `version` 必须**高于**当前最新 Release（`package.json`）。
-4. 构建产物包含 `latest.yml`、`mychatapp-<版本>-setup.exe`、`mychatapp-<版本>-setup.exe.blockmap`。
+4. 构建产物包含 `latest.yml`、`polarnight-<版本>-setup.exe`、`polarnight-<版本>-setup.exe.blockmap`。
 5. 构建后先自查 `dist/win-unpacked/resources/app-update.yml`，应为：
 
    ```yaml
@@ -134,7 +134,7 @@ $env:MYCHATAPP_UPDATE_URL="http://127.0.0.1:3999/mychatapp"
    owner: Dandelion-Z
    repo: Polar-Night
    private: false
-   updaterCacheDirName: mychatapp-updater
+   updaterCacheDirName: polarnight-updater
    ```
 
 6. 三个文件上传到同一个 GitHub Release：
@@ -145,7 +145,7 @@ $env:MYCHATAPP_UPDATE_URL="http://127.0.0.1:3999/mychatapp"
 
 ### 3.2 步骤
 
-1. 安装**旧版本**安装包（`dist/mychatapp-<旧版本>-setup.exe`），先不要启动。
+1. 安装**旧版本**安装包（`dist/polarnight-<旧版本>-setup.exe`），先不要启动。
 2. 在 GitHub 创建新版本 Release 并上传 `latest.yml`、`*.exe`、`*.blockmap`。
 3. 启动旧版本：
    - 期望：更新门禁 → 「发现新版本」→ 自动下载（显示进度）→ 下载完成后自动静默安装并重启；
@@ -155,7 +155,7 @@ $env:MYCHATAPP_UPDATE_URL="http://127.0.0.1:3999/mychatapp"
 
 ### 3.3 发布前验证（不发 Release 也能做）
 
-直接运行 `dist/win-unpacked/mychatapp.exe`，**不要**设置 `MYCHATAPP_UPDATE_URL`：
+直接运行 `dist/win-unpacked/polarnight.exe`，**不要**设置 `POLARNIGHT_UPDATE_URL`：
 
 - 若 GitHub 上最新正式版版本号低于本地版本，期望「已是最新版本」→ 登录页；
 - 这一步同时验证 `releases.atom` / `releases/latest` / `latest.yml` 抓取与 semver 比较四条链路；
@@ -182,7 +182,7 @@ $env:MYCHATAPP_UPDATE_URL="http://127.0.0.1:3999/mychatapp"
 | 门禁显示「无法读取 GitHub 发布信息…」                   | 仓库地址错误，或该仓库还没有正式 Release（draft/prerelease 不算）                         | 核对 `owner`/`repo`，确认已发布正式 Release                          |
 | 门禁显示「该版本发布缺少更新描述文件 latest.yml…」      | Release 里没上传 `latest.yml`，或资产名被改过                                             | 补齐 `latest.yml` + `*-setup.exe` + `*.blockmap`，名字不要改          |
 | 门禁显示「GitHub 请求过于频繁或暂时拒绝访问」            | 出口 IP 被 GitHub 限流，或网络中间设备返回 403                                            | 稍后重试；必要时更换网络                                             |
-| 设置 `MYCHATAPP_UPDATE_URL` 后提示「不能填 GitHub 地址」 | 该变量只用于 Generic 本地测试，正式更新源由 `app-update.yml` 提供                         | 正式测试时不要设置该变量；本地测试填 `http://127.0.0.1:3999/mychatapp` |
+| 设置 `POLARNIGHT_UPDATE_URL` 后提示「不能填 GitHub 地址」 | 该变量只用于 Generic 本地测试，正式更新源由 `app-update.yml` 提供                         | 正式测试时不要设置该变量；本地测试填 `http://127.0.0.1:3999/polarnight` |
 | 假服务器返回 404                                        | 旧脚本按 `endsWith('latest.yml')` 匹配，被 `?noCache=` 破坏                               | 使用 `scripts/fake-update-server.mjs`（按 pathname 匹配）            |
 | 能进登录页但登录提示「无法连接服务器」                  | 构建时未设置 `VITE_API_BASE_URL`，生产 CSP 只允许 `'self'`                                | 确认 `.env.production` 或命令行提供正式 API 地址后重新构建            |
 | 开发模式 Electron 直接崩溃                              | 本机 Electron 环境问题（最小示例同样崩溃）                                                | 与更新无关；改用打包测试模式                                          |
@@ -191,6 +191,6 @@ $env:MYCHATAPP_UPDATE_URL="http://127.0.0.1:3999/mychatapp"
 
 ## 5. 与旧产物的区别
 
-- `dist/win-unpacked` 是**测试构建**：CSP 指向测试用的 API 地址（默认 `http://localhost:3000`），且 `electron-builder --dir` 会写入 github 版 `resources/app-update.yml`；直接双击会去访问真实 GitHub，用 `npm run test:packaged` 启动（脚本会注入 `MYCHATAPP_UPDATE_URL` 指向假服务器）。
+- `dist/win-unpacked` 是**测试构建**：CSP 指向测试用的 API 地址（默认 `http://localhost:3000`），且 `electron-builder --dir` 会写入 github 版 `resources/app-update.yml`；直接双击会去访问真实 GitHub，用 `npm run test:packaged` 启动（脚本会注入 `POLARNIGHT_UPDATE_URL` 指向假服务器）。
 - 已发布的 `dist/mychatapp-1.0.0-setup.exe` 内嵌更新源是 `http://127.0.0.1:13001`，**无法自动升级**，只能人工覆盖安装 v1.0.1 及以后版本。
 - v1.0.1 起，正式安装包内嵌 GitHub Releases 更新源，可全自动升级。

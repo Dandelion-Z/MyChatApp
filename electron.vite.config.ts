@@ -8,7 +8,7 @@ const DEV_DEFAULT_API_BASE_URL = 'http://localhost:3000'
 // electron-vite dev 的渲染进程地址，HMR 需要放行其 WebSocket
 const DEV_RENDERER_WS_ORIGIN = 'ws://localhost:5173'
 
-const CSP_PLACEHOLDER = '__MYCHATAPP_CSP__'
+const CSP_PLACEHOLDER = '__POLARNIGHT_CSP__'
 
 function normalizeApiBaseUrl(rawValue: string | undefined): string | null {
   const value = rawValue?.trim()
@@ -73,7 +73,7 @@ function createCspPlugin(isDev: boolean, apiBaseUrl: string | null): Plugin {
   const csp = buildCsp(isDev, apiBaseUrl)
 
   return {
-    name: 'mychatapp-csp',
+    name: 'polarnight-csp',
     transformIndexHtml(html) {
       return html.replace(CSP_PLACEHOLDER, csp)
     }
@@ -88,7 +88,7 @@ export default defineConfig(({ command, mode }) => {
 
   if (!isDev && !configuredApiBaseUrl) {
     console.warn(
-      '\n[mychatapp] 未配置 VITE_API_BASE_URL：生产构建的 CSP 不会放行后端请求。' +
+      '\n[polarnight] 未配置 VITE_API_BASE_URL：生产构建的 CSP 不会放行后端请求。' +
         '请在打包前设置真实服务器地址，例如 VITE_API_BASE_URL=https://chat-api.example.com。\n'
     )
   }

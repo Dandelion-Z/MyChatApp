@@ -442,7 +442,7 @@ const CHAT_MENU_MARGIN = 8
 
 // 输入框高度：用户手动拖动调整，所有会话共用并持久化在本机
 const COMPOSER_MIN_HEIGHT = 44
-const COMPOSER_HEIGHT_STORAGE_KEY = 'mychatapp.composerHeight'
+const COMPOSER_HEIGHT_STORAGE_KEY = 'polarnight.composerHeight'
 
 // 中栏宽度：拖动右侧边框调整，限定范围避免挤压聊天区
 const MIDDLE_COLUMN_DEFAULT_WIDTH = 280

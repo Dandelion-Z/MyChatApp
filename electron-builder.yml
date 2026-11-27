@@ -1,5 +1,20 @@
-appId: com.electron.app
-productName: mychatapp
+electronDownload:
+  mirror: https://npmmirror.com/mirrors/electron/
+
+# 打包时直接复用 node_modules 中已解压的 Electron（由 npm install 的 electron 包提供，
+# 版本与实际依赖一致）。electron-builder 26 默认会重新下载约 125MB 的
+# electron-v<version>-win32-x64.zip，网络不稳定时该下载会长时间无进度甚至永久挂起
+# （其 fetch 下载器不识别 10 分钟超时、不支持断点续传），表现为“卡在下载 Electron”。
+# 指定 electronDist 后完全不联网下载 Electron，直接拷贝本地解压目录。
+# 注意：该目录是 Windows 版 Electron，如需构建 mac/linux，请临时删除下面这一行。
+electronDist: node_modules/electron/dist
+
+# appId 是 Windows 侧的应用身份：NSIS 用它推导安装注册表键（Software\<GUID>）、
+# 卸载项、快捷方式归属与任务栏/AUMID 分组，必须与 src/main/index.ts 的
+# setAppUserModelId 保持一致。改动它会得到全新的安装目录与卸载项，
+# 旧版本（appId 仍为 com.electron.app）需手动卸载。
+appId: com.polarnight.app
+productName: polarnight
 directories:
   buildResources: build
 files:
@@ -32,7 +47,7 @@ files:
 asarUnpack:
   - resources/**
 win:
-  executableName: mychatapp
+  executableName: polarnight
 nsis:
   artifactName: ${name}-${version}-setup.${ext}
   # 关闭一键安装，改为安装向导，允许用户选择安装目录
@@ -69,10 +84,10 @@ npmRebuild: false
 publish:
   # 正式更新源：GitHub Releases（公开仓库，客户端不内置任何 Token）
   provider: github
-  # 必须显式声明 owner/repo：本仓库 .git/config 的 remote 是 MyChatApp，
+  # 必须显式声明 owner/repo：本仓库 .git/config 的 remote 是 polarnight，
   # 省略时会自动探测成错误的仓库名
   owner: Dandelion-Z
-  repo: Polar-Night
+  repo: polarnight
   # 公开仓库：不读取 GH_TOKEN/GITHUB_TOKEN，匿名访问即可下载
   private: false
   # tag 使用 v 前缀（v1.0.1），与已发布的 v1.0.0 保持一致

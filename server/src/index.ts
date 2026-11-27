@@ -276,7 +276,7 @@ async function start(): Promise<void> {
   }
 
   httpServer.listen(PORT, HOST, () => {
-    console.log('MyChatApp 服务器已启动')
+    console.log('Polar Night 服务器已启动')
     console.log(`  监听地址：http://${HOST}:${PORT}`)
     console.log(
       TRUST_PROXY === false
