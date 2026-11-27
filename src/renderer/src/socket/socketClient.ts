@@ -29,6 +29,17 @@ export type ChatMessage = {
   createdAt: string
 }
 
+export type FriendAcceptedEvent = {
+  requestId: string
+  /** requester：自己发出的申请被同意；accepter：自己刚同意的申请（含同账号其他窗口） */
+  role: 'requester' | 'accepter'
+  friend: {
+    id: string
+    nickname: string
+    avatarUrl: string | null
+  }
+}
+
 export type SendMessageInput = {
   toUserId: string
   messageId: string
@@ -41,6 +52,7 @@ export type SendMessageAck =
 type StatusListener = (status: SocketStatus) => void
 type PresenceListener = (snapshot: PresenceSnapshot | null) => void
 type MessageListener = (message: ChatMessage) => void
+type FriendAcceptedListener = (event: FriendAcceptedEvent) => void
 
 let socket: Socket | null = null
 let status: SocketStatus = 'idle'
@@ -50,6 +62,7 @@ let presenceSnapshot: PresenceSnapshot | null = null
 const statusListeners = new Set<StatusListener>()
 const presenceListeners = new Set<PresenceListener>()
 const messageListeners = new Set<MessageListener>()
+const friendAcceptedListeners = new Set<FriendAcceptedListener>()
 
 function notifyStatus(nextStatus: SocketStatus): void {
   status = nextStatus
@@ -70,6 +83,12 @@ function notifyPresence(snapshot: PresenceSnapshot | null): void {
 function notifyMessage(message: ChatMessage): void {
   for (const listener of messageListeners) {
     listener(message)
+  }
+}
+
+function notifyFriendAccepted(event: FriendAcceptedEvent): void {
+  for (const listener of friendAcceptedListeners) {
+    listener(event)
   }
 }
 
@@ -132,6 +151,36 @@ function parsePresenceSnapshot(payload: unknown): PresenceSnapshot | null {
 
   return {
     onlineFriendIds: ids.filter((id): id is string => typeof id === 'string')
+  }
+}
+
+function parseFriendAccepted(payload: unknown): FriendAcceptedEvent | null {
+  if (typeof payload !== 'object' || payload === null) {
+    return null
+  }
+
+  const value = payload as Record<string, unknown>
+  const friend = value.friend as Record<string, unknown> | null | undefined
+
+  if (
+    typeof value.requestId !== 'string' ||
+    (value.role !== 'requester' && value.role !== 'accepter') ||
+    typeof friend !== 'object' ||
+    friend === null ||
+    typeof friend.id !== 'string' ||
+    typeof friend.nickname !== 'string'
+  ) {
+    return null
+  }
+
+  return {
+    requestId: value.requestId,
+    role: value.role,
+    friend: {
+      id: friend.id,
+      nickname: friend.nickname,
+      avatarUrl: typeof friend.avatarUrl === 'string' ? friend.avatarUrl : null
+    }
   }
 }
 
@@ -206,6 +255,14 @@ function createSocket(): Socket {
 
     if (message) {
       notifyMessage(message)
+    }
+  })
+
+  instance.on('friend:accepted', (payload: unknown) => {
+    const event = parseFriendAccepted(payload)
+
+    if (event) {
+      notifyFriendAccepted(event)
     }
   })
 
@@ -341,6 +398,15 @@ export function subscribeMessages(listener: MessageListener): () => void {
 
   return () => {
     messageListeners.delete(listener)
+  }
+}
+
+/** 订阅好友申请通过事件（双方都会收到）；返回取消订阅函数 */
+export function subscribeFriendAccepted(listener: FriendAcceptedListener): () => void {
+  friendAcceptedListeners.add(listener)
+
+  return () => {
+    friendAcceptedListeners.delete(listener)
   }
 }
 

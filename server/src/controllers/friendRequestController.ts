@@ -16,6 +16,7 @@ import {
   getFriendRequests,
   rejectFriendRequest
 } from '../services/friendRequestService'
+import { notifyFriendAccepted } from '../socket/friendEvents'
 
 const REQUEST_ID_PATTERN = /^[1-9]\d*$/
 const MAX_BIGINT = 9223372036854775807n
@@ -127,7 +128,17 @@ export async function acceptFriendRequestHandler(
 
   try {
     const friendRequest = await acceptFriendRequest(currentUserId, validation.value)
+
+    // 事务提交成功后先返回结果，再推送实时事件：
+    // 推送失败（对方离线/连接异常）只记录日志，不影响本次同意结果。
     response.status(200).json({ success: true, data: friendRequest })
+
+    void notifyFriendAccepted(currentUserId, friendRequest).catch((error) => {
+      console.error(
+        '推送好友申请通过事件失败：',
+        error instanceof Error ? error.message : String(error)
+      )
+    })
   } catch (error) {
     if (error instanceof FriendRequestNotFoundError) {
       response.status(404).json({ success: false, error: error.message })

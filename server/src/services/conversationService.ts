@@ -253,6 +253,33 @@ export async function openConversation(
   return toConversationItem(result.rows[0])
 }
 
+/**
+ * 好友申请通过时，为双方同时建立同一条 1V1 会话。
+ *
+ * - 必须在调用方的事务中执行：好友关系、好友申请状态、双方会话记录要一起提交；
+ * - 只保证双方各有一行记录，不修改任何展示状态（置顶 / 免打扰 / 已读位置 / version），
+ *   已存在时保持原状，因此重复同意同一申请不会产生重复会话，也不会覆盖用户设置；
+ * - 与 openConversation 共用 user_conversations 表与 (user_id, peer_id) 主键，
+ *   客户端随后仍通过会话列表接口读取，无需新增接口。
+ */
+export async function ensureFriendConversations(
+  client: PoolClient,
+  firstUserId: string,
+  secondUserId: string
+): Promise<void> {
+  if (firstUserId === secondUserId) {
+    return
+  }
+
+  await client.query(
+    `INSERT INTO user_conversations (user_id, peer_id, is_hidden, last_activity_at, created_at, updated_at)
+     VALUES ($1, $2, FALSE, clock_timestamp(), clock_timestamp(), clock_timestamp()),
+            ($2, $1, FALSE, clock_timestamp(), clock_timestamp(), clock_timestamp())
+     ON CONFLICT (user_id, peer_id) DO NOTHING`,
+    [firstUserId, secondUserId]
+  )
+}
+
 export type ConversationStateChanges = {
   isPinned?: boolean
   isMuted?: boolean

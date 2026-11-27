@@ -521,6 +521,9 @@ input {
   background: var(--ui-selected);
 }
 
+/* 头像容器保持圆形，但不裁剪溢出内容：
+   图片由 .avatar-image 自身的 border-radius 裁成圆形，容器再开 overflow 会把
+   定位在圆外的在线状态点切掉（之前绿点只剩一小块的根因）。 */
 .avatar {
   position: relative;
   display: flex;
@@ -530,7 +533,6 @@ input {
   height: 40px;
   flex-shrink: 0;
   border-radius: 50%;
-  overflow: hidden;
   background: var(--ui-avatar);
   color: #b0b0b8;
 }

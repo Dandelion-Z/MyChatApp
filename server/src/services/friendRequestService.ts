@@ -1,6 +1,8 @@
 import { pool } from '../database/pool'
 import { CannotAddSelfError, DuplicateFriendshipError, UserNotFoundError } from './friendService'
 import type { FriendUser } from './friendService'
+import { ensureFriendConversations } from './conversationService'
+import { lockUserPair } from './userPairLock'
 
 export type FriendRequestStatus = 'pending' | 'accepted' | 'rejected' | 'expired'
 export type FriendRequestDirection = 'incoming' | 'outgoing'
@@ -341,6 +343,10 @@ export async function acceptFriendRequest(
       const [firstId, secondId] =
         BigInt(senderId) < BigInt(receiverId) ? [senderId, receiverId] : [receiverId, senderId]
 
+      // 与删好友、发消息使用同一把用户对锁，避免并发下好友关系刚建立就被另一端删除
+      await lockUserPair(client, firstId, secondId)
+
+      // 好友关系与好友申请状态在同一事务里写入；会话记录在事务末尾统一补齐（见下）
       await client.query(
         `INSERT INTO friendships (user_id, friend_id)
          VALUES ($1, $2), ($3, $4)
@@ -358,6 +364,14 @@ export async function acceptFriendRequest(
 
       resultRow = { ...row, ...updated.rows[0] }
     }
+
+    // 重复同意同一条已通过的申请（重试/多端并发）时也补齐会话记录：
+    // ensureFriendConversations 幂等且不覆盖已有会话状态，可安全重复执行。
+    await ensureFriendConversations(
+      client,
+      String(resultRow.sender_id),
+      String(resultRow.receiver_id)
+    )
 
     await client.query('COMMIT')
     committed = true

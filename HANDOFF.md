@@ -1,7 +1,7 @@
 # 永夜（MyChatApp）项目交接说明
 
-> 更新时间：2026-11-26
-> 适用版本：v1.0.0 开发版 MVP（数据库已统一为 V1；已完成一轮全量 QA 基线）
+> 更新时间：2026-11-27
+> 适用版本：v1.0.1 源码（更新源已迁移为 GitHub Releases；v1.0.1 待构建发布）
 > 品牌：界面与窗口可见名称统一为「永夜」；内部项目名、包名、数据库名、API、IPC、环境变量仍为 MyChatApp/mychatapp，未改。
 > 本文档面向接手开发的新会话：只读本文即可了解现状并继续开发，不必回溯历史对话。
 
@@ -112,6 +112,7 @@ cd server && npm run typecheck && npm run build
 
 npm run build:win
 VITE_API_BASE_URL=http://localhost:3000 npm run build:unpack   # win-unpacked（测试用）
+npm run build:win                                             # 正式构建：API 地址取自 .env.production
 
 npm run test:packaged
 npm run update:fake-server        # 假更新服务器（3999）
@@ -122,8 +123,9 @@ QA_DATABASE_URL='postgresql://mychatapp_user:<password>@127.0.0.1:5432/mychatapp
 
 环境变量：
 
-- 客户端构建期：`VITE_API_BASE_URL`（生产必须是真实 HTTPS 地址，否则生产 CSP 只允许 `'self'`）。
-- 客户端运行期：`MYCHATAPP_UPDATE_URL` 可覆盖打包内 `app-update.yml` 的更新地址。
+- 客户端构建期：`VITE_API_BASE_URL`（正式构建使用 `.env.production` 中的 `http://149.248.17.85:3000`；未配置时生产 CSP 只允许 `'self'`，登录会失败）。
+- 客户端运行期：`MYCHATAPP_UPDATE_URL` 仅用于本地自动更新测试，会强制改用 Generic 假更新服务器；正式版更新源由安装包内 `app-update.yml` 提供，不需要该变量，也不允许填 GitHub 地址。
+- `.env.production` 被 `.gitignore` 的 `.env.*` 规则忽略：新克隆仓库后需手动创建一行 `VITE_API_BASE_URL=http://149.248.17.85:3000`，或在构建命令中直接提供同名环境变量（命令行优先于该文件）。
 - 服务端：`PORT`、`HOST`（监听地址，默认 `127.0.0.1`，生产不要改成 `0.0.0.0`）、`DATABASE_URL`、`CORS_ORIGIN`（逗号分隔，拒绝 `*` 与 `null`）、`JWT_SECRET`（≥32 字节）、`ACCESS_TOKEN_TTL_SECONDS`（默认 900）、`MESSAGE_RETENTION_DAYS`（默认 30）、`AVATAR_DIR`（头像目录，生产需持久化）、`TRUST_PROXY`（可信反向代理地址，逗号分隔；默认不设置=不信任任何转发头）。
 - 本地库测试：`MYCHATAPP_LOCAL_STORAGE_QUOTA_MB` 可临时缩小 SQLite 容量。
 
@@ -241,7 +243,8 @@ QA_DATABASE_URL='postgresql://mychatapp_user:<password>@127.0.0.1:5432/mychatapp
 - `electron-builder.yml` 的 `files` 显式白名单：`out/**/*`、`package.json`、`node_modules/**/*`、`resources/**/*`；排除 `.qa/**`、`screenshots/**`、`dist/**`、`*.tsbuildinfo`、`*.log`。
 - `resources/**` 配置 `asarUnpack`，主进程用 `resolveAssetPath()` 把 `app.asar` 路径映射到 `app.asar.unpacked`（托盘/窗口图标）。
 - 图标：`build/icon.ico`（多尺寸 ≥256）用于 exe/安装包，`resources/icon.ico|png` 用于运行时；AUMID 与 `appId` 均为 `com.electron.app`。
-- 自动更新：`electron-updater`，启动门禁 fail-closed（检查失败不进入登录页）；更新地址优先 `MYCHATAPP_UPDATE_URL`，否则读 `resources/app-update.yml`（当前为占位 `https://updates.invalid/mychatapp`）。
+- 自动更新：`electron-updater`，启动门禁 fail-closed（检查失败不进入登录页）；正式更新源为 GitHub Releases（`electron-builder.yml` 的 `publish` → `provider: github` / `Dandelion-Z/Polar-Night` / `private: false`，公开仓库不需要客户端 Token），运行期由 `MYCHATAPP_UPDATE_URL` 切换到 Generic 假更新服务器（仅本地测试）。开发版（`app.isPackaged === false`）直接放行、不发任何更新请求。
+- 版本 1.0.0 的安装包内嵌更新源是 `http://127.0.0.1:13001`（早期联调地址，无法远程修改），因此 1.0.0 不能自动升级，必须人工覆盖安装 1.0.1；1.0.1 起走 GitHub Releases 全自动更新。
 
 ---
 
@@ -357,7 +360,7 @@ QA_DATABASE_URL='postgresql://mychatapp_user:<password>@127.0.0.1:5432/mychatapp
 
 ### 6.5 未执行或无法执行
 
-- 真实 HTTPS 更新源全链路（下载→静默安装→重启→再次检查）：当前只有同版本假源。
+- GitHub Releases 真实更新链路（下载→静默安装→重启→再次检查）：尚未实跑，需发布 v1.0.1 后验证。
 - 代码签名安装包的安装/卸载/SmartScreen 行为。
 - 多显示器不同缩放、跨 DPI 拖动、长时间驻留。
 - macOS 构建（`build/icon.icns` 仍为模板图标）。
@@ -367,8 +370,8 @@ QA_DATABASE_URL='postgresql://mychatapp_user:<password>@127.0.0.1:5432/mychatapp
 
 ## 7. 已知问题与技术限制
 
-1. 自动更新依赖真实 HTTPS 源、代码签名与 `latest.yml`/安装包/blockmap 上传；`publish.url` 仍是占位地址。
-2. `dist/win-unpacked` 是本地测试构建（CSP 指向 `http://localhost:3000`），正式发布必须用真实 `VITE_API_BASE_URL` 重建。
+1. 自动更新依赖 GitHub Releases 可达性（国内网络访问 `github.com` 及资产 CDN 可能不稳定）、代码签名，以及每次发布都上传 `latest.yml`/安装包/blockmap；门禁 fail-closed，没有旁路。
+2. `dist/win-unpacked` 是本地测试构建（CSP 指向测试 API 地址），正式发布必须用 `.env.production` 的正式地址重建。
 3. Access Token 无状态，登出/改密后最长 15 分钟内仍可能有效；改密会撤销其他设备 Refresh Token。
 4. 未勾选自动登录时异常退出，服务端临时 Refresh Token 会残留到 24 小时过期。
 5. 在线状态最多约 30 秒延迟（轮询），不做上下线广播。
@@ -433,13 +436,13 @@ QA_DATABASE_URL='postgresql://mychatapp_user:<password>@127.0.0.1:5432/mychatapp
 
 ### 9.3 客户端发布
 
-- 用真实 `VITE_API_BASE_URL` 构建；配置真实更新源 `publish.url` 或运行期 `MYCHATAPP_UPDATE_URL`；生成 `latest.yml` + 安装包 + blockmap 并上传；安装包代码签名（建议）。
+- 用正式 API 地址构建（`.env.production`：`VITE_API_BASE_URL=http://149.248.17.85:3000`）；更新源为 GitHub Releases（`publish.provider: github`），每次发布需生成 `latest.yml` + 安装包 + blockmap 并上传到**正式** Release（tag `v` 前缀、非 draft/prerelease）；安装包代码签名（建议）。
 - CSP 会随 `VITE_API_BASE_URL` 自动放行 API origin 与 `ws/wss`；务必确认构建产物 `index.html` 的 CSP 正确。
 
 ### 9.4 当前进度
 
 - 本地开发与打包验证完成（数据库 V1、全量接口测试、打包态 GUI 走查、双客户端流程）。
-- 尚未部署到任何 VPS；未配置真实 HTTPS API、更新源、代码签名；未做生产备份与监控。
+- 服务端已可通过公网 `http://149.248.17.85:3000` 访问（尚无 HTTPS 反向代理、代码签名与生产备份监控）；客户端正式构建 API 地址已切到该地址，更新源已切到 GitHub Releases。
 - 本机打包 exe 在仓库路径下启动崩溃属环境问题，部署/发布不涉及该路径，不视为阻塞。
 
 ---

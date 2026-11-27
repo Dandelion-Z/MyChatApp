@@ -54,6 +54,7 @@ import {
   getSocketStatus,
   requestPresenceSnapshot,
   sendChatMessage,
+  subscribeFriendAccepted,
   subscribeMessages,
   subscribePresence,
   subscribeSocketStatus
@@ -2909,6 +2910,9 @@ function ChatScreen(): React.JSX.Element {
         syncedFriendIdsRef.current.delete(item.user.id)
         syncingFriendIdsRef.current.delete(item.user.id)
         await loadFriends()
+        // 服务端已在同意申请的事务里建好双方会话，这里立即拉一次会话列表，
+        // 保证即使实时事件没收到，新会话也会出现在列表里
+        await refreshServerConversations()
       }
 
       if (!isMountedRef.current) {
@@ -2947,6 +2951,46 @@ function ChatScreen(): React.JSX.Element {
       setToast(null)
     }, 1000)
   }, [])
+
+  // 好友申请通过：服务端在事务提交后推送 friend:accepted，双方都收到。
+  // 申请者不需要重新登录即可看到新好友与新会话；同意者的其他窗口也同步刷新。
+  useEffect(() => {
+    const myUserId = user?.id
+
+    if (!myUserId) {
+      return
+    }
+
+    return subscribeFriendAccepted((event) => {
+      if (!isMountedRef.current) {
+        return
+      }
+
+      // 好友关系已提交：刷新好友、申请状态与服务端会话列表，
+      // 新会话本身由服务端在同意申请时创建，这里只做拉取。
+      void loadFriends()
+      void loadFriendRequests()
+      void refreshServerConversations()
+      // 新好友需要立即获得在线状态（不必等下一次 30 秒轮询）
+      requestPresenceSnapshot()
+
+      // 本地会话条目同步一份，服务端列表不可用时也能看到这个会话
+      void ensureLocalChat(myUserId, event.friend.id).then(() => refreshChatEntries())
+
+      if (event.role === 'requester') {
+        showToast(`${event.friend.nickname} 已同意你的好友申请`)
+      } else {
+        showToast('已添加好友，现在可以开始聊天了')
+      }
+    })
+  }, [
+    loadFriends,
+    loadFriendRequests,
+    refreshChatEntries,
+    refreshServerConversations,
+    showToast,
+    user?.id
+  ])
 
   useEffect(() => {
     return () => {

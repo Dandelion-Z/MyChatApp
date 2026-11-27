@@ -4,6 +4,14 @@ import type { Server } from 'socket.io'
 import { pool } from '../database/pool'
 import { getJwtSecret } from '../services/authService'
 import { registerMessageHandler } from './messageHandler'
+import {
+  attachRealtimeServer,
+  clearOnlineSocket,
+  getOnlineSocket,
+  getOnlineSocketId,
+  isUserOnline,
+  setOnlineSocket
+} from './realtime'
 
 const USER_ID_PATTERN = /^[1-9]\d*$/
 
@@ -12,10 +20,10 @@ type SocketData = {
   tokenExp?: number
 }
 
-// 第一版规则：同一账号只保留最新一条连接
-const onlineUsers = new Map<string, string>()
-
 export function registerSocketHandlers(io: Server): void {
+  // 把 Socket.IO 实例交给实时推送模块：HTTP 接口（如同意好友申请）也要向在线用户推送事件
+  attachRealtimeServer(io)
+
   // 握手认证：身份只来自 JWT，绝不信任客户端提交的 userId
   io.use(async (socket, next) => {
     const auth = socket.handshake.auth as { token?: unknown } | undefined
@@ -79,8 +87,8 @@ export function registerSocketHandlers(io: Server): void {
     console.log(`Socket.IO 已连接：socket=${socket.id} userId=${userId}`)
 
     // 同一账号新连接替换旧连接：先写入新 socketId，再断开旧连接
-    const previousSocketId = onlineUsers.get(userId)
-    onlineUsers.set(userId, socket.id)
+    const previousSocketId = getOnlineSocketId(userId)
+    setOnlineSocket(userId, socket.id)
 
     if (previousSocketId && previousSocketId !== socket.id) {
       const previousSocket = io.sockets.sockets.get(previousSocketId)
@@ -114,7 +122,7 @@ export function registerSocketHandlers(io: Server): void {
 
         const onlineFriendIds = result.rows
           .map((row) => String(row.friend_id))
-          .filter((friendId) => onlineUsers.has(friendId))
+          .filter((friendId) => isUserOnline(friendId))
 
         socket.emit('presence:snapshot', { onlineFriendIds })
       } catch (error) {
@@ -124,10 +132,7 @@ export function registerSocketHandlers(io: Server): void {
     })
 
     // 消息发送：身份只使用当前 socket 的认证 userId
-    registerMessageHandler(socket, userId, (receiverId) => {
-      const recipientSocketId = onlineUsers.get(receiverId)
-      return recipientSocketId ? io.sockets.sockets.get(recipientSocketId) : undefined
-    })
+    registerMessageHandler(socket, userId, (receiverId) => getOnlineSocket(receiverId))
 
     socket.on('disconnect', (reason) => {
       if (expiryTimer !== null) {
@@ -135,9 +140,7 @@ export function registerSocketHandlers(io: Server): void {
       }
 
       // 只有当前映射中的 socketId 仍属于自己时才删除，避免旧连接的延迟断开删除新连接状态
-      if (onlineUsers.get(userId) === socket.id) {
-        onlineUsers.delete(userId)
-      }
+      clearOnlineSocket(userId, socket.id)
 
       console.log(`Socket.IO 已断开：socket=${socket.id} userId=${userId} reason=${reason}`)
     })
